@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json.schemastore.org/youtrack-app.json",
+  "name": "hello-world-app",
+  "title": "Hello World App",
+  "description": "A simple Hello World dashboard widget for YouTrack",
+  "version": "1.0.0",
+  "icon": "hello-world-logo.svg",
+  "iconDark": "hello-world-logo-dark.svg",
+  "url": "https://github.com/alex-pf/youtrack-hello-world-app",
+  "minYouTrackVersion": "2024.3.0",
+  "vendor": {
+    "name": "alex-pf",
+    "url": "https://github.com/alex-pf",
+    "email": "prizrakfantezi@gmail.com"
+  },
+  "widgets": [
+    {
+      "key": "hello-world-widget",
+      "name": "Hello World",
+      "description": "A simple Hello World dashboard widget",
+      "iconPath": "hello-world/widget-icon.svg",
+      "indexPath": "hello-world/index.html",
+      "extensionPoint": "DASHBOARD_WIDGET"
+    }
+  ]
+}

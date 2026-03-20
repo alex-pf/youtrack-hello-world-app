@@ -1,0 +1,13 @@
+.hello-world-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+}
+
+.hello-world-title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--ring-text-color);
+}
