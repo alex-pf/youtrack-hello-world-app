@@ -1,10 +1,7 @@
-name: Build & Deploy YouTrack App
+name: Production — Deploy
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -27,34 +24,9 @@ jobs:
           name: youtrack-app-dist
           path: dist/
 
-  deploy-staging:
-    name: Deploy to Staging
-    needs: build
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    environment: staging
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: youtrack-app-dist
-          path: dist/
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - run: npm install -g @jetbrains/youtrack-apps-tools
-
-      - name: Upload to YouTrack (Staging)
-        env:
-          YOUTRACK_HOST: ${{ secrets.YOUTRACK_STAGING_HOST }}
-          YOUTRACK_API_TOKEN: ${{ secrets.YOUTRACK_STAGING_TOKEN }}
-        run: youtrack-app upload dist
-
-  deploy-production:
+  deploy:
     name: Deploy to Production
-    needs: deploy-staging
-    if: github.ref == 'refs/heads/main'
+    needs: build
     runs-on: ubuntu-latest
     environment: production
     steps:
