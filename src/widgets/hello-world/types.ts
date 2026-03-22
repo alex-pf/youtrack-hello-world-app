@@ -10,6 +10,38 @@ export interface WidgetConfig {
   visibleFields?: FieldColumnConfig[];
 }
 
+/** Shape persisted by storeConfig — visibleFields is a JSON string */
+export interface StoredWidgetConfig {
+  search: string;
+  title?: string;
+  visibleFields?: string;
+}
+
+export function parseStoredConfig(stored: StoredWidgetConfig | null): WidgetConfig | null {
+  if (!stored) return null;
+  let fields: FieldColumnConfig[] | undefined;
+  if (stored.visibleFields) {
+    try {
+      fields = JSON.parse(stored.visibleFields) as FieldColumnConfig[];
+    } catch {
+      fields = undefined;
+    }
+  }
+  return {
+    search: stored.search,
+    title: stored.title,
+    visibleFields: fields,
+  };
+}
+
+export function serializeConfig(config: WidgetConfig): StoredWidgetConfig {
+  return {
+    search: config.search,
+    title: config.title,
+    visibleFields: config.visibleFields ? JSON.stringify(config.visibleFields) : undefined,
+  };
+}
+
 export interface IssueFieldValue {
   id?: string;
   name?: string;
