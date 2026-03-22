@@ -13,7 +13,7 @@ export async function loadIssues(
   search: string,
   skip = 0
 ): Promise<Issue[]> {
-  return await host.fetchYouTrack<Issue[]>('api/issues', {
+  return await host.fetchYouTrack<Issue[]>('issues', {
     query: {
       fields: ISSUE_FIELDS,
       query: search,
@@ -28,7 +28,7 @@ export async function loadIssuesCount(
   search: string
 ): Promise<number> {
   const result = await host.fetchYouTrack<{count: number}>(
-    'api/issuesGetter/count',
+    'issuesGetter/count',
     {
       method: 'POST',
       query: {
