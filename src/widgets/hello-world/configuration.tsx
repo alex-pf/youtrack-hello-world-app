@@ -1,13 +1,16 @@
 import React, {memo, useCallback, useEffect, useState} from 'react';
 import Input from '@jetbrains/ring-ui-built/components/input/input';
+import {Size as InputSize} from '@jetbrains/ring-ui-built/components/input/input';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import ButtonSet from '@jetbrains/ring-ui-built/components/button-set/button-set';
 import {ControlsHeight} from '@jetbrains/ring-ui-built/components/global/controls-height';
 import Checkbox from '@jetbrains/ring-ui-built/components/checkbox/checkbox';
 import LoaderInline from '@jetbrains/ring-ui-built/components/loader-inline/loader-inline';
+import QueryAssist from '@jetbrains/ring-ui-built/components/query-assist/query-assist';
+import type {QueryAssistRequestParams} from '@jetbrains/ring-ui-built/components/query-assist/query-assist';
 import type {EmbeddableWidgetAPI} from '../../../@types/globals';
 import type {WidgetConfig, FieldColumnConfig} from './types';
-import {BUILTIN_FIELDS, extractAvailableFields, loadIssues} from './resources';
+import {BUILTIN_FIELDS, extractAvailableFields, loadIssues, queryAssistDataSource} from './resources';
 
 interface Props {
   config: WidgetConfig | null;
@@ -24,6 +27,18 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
   );
   const [availableFields, setAvailableFields] = useState<FieldColumnConfig[]>([]);
   const [isLoadingFields, setIsLoadingFields] = useState(false);
+
+  // Data source for QueryAssist — proxies to YouTrack search/assist API
+  const queryAssistHandler = useCallback(async (params: QueryAssistRequestParams) => {
+    try {
+      return await queryAssistDataSource(host, {
+        query: params.query,
+        caret: params.caret,
+      });
+    } catch {
+      return {query: params.query, caret: params.caret, suggestions: []};
+    }
+  }, [host]);
 
   // Load available fields when search query is set
   const loadAvailableFields = useCallback(async (query: string) => {
@@ -88,12 +103,19 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
         onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTitle(e.target.value)}
       />
 
-      <Input
-        label="Поисковый запрос"
-        value={search}
-        placeholder="project: DEMO State: Open"
-        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearch(e.target.value)}
-      />
+      <div style={{marginTop: 8, marginBottom: 4}}>
+        <span style={{fontSize: 12, color: 'var(--ring-secondary-color)', display: 'block', marginBottom: 4}}>
+          Поисковый запрос
+        </span>
+        <QueryAssist
+          query={search}
+          placeholder="project: DEMO State: Open"
+          dataSource={queryAssistHandler}
+          onChange={({query}) => setSearch(query)}
+          onApply={({query}) => setSearch(query)}
+          size={InputSize.M}
+        />
+      </div>
 
       <div style={{marginTop: 12, marginBottom: 8}}>
         <div style={{display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8}}>
