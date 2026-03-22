@@ -1,6 +1,13 @@
+export interface FieldColumnConfig {
+  key: string;       // field name (e.g. 'Priority') or built-in key ('created', 'updated')
+  label: string;     // display label
+  builtin?: boolean; // true for created/updated/resolved
+}
+
 export interface WidgetConfig {
   search: string;
   title?: string;
+  visibleFields?: FieldColumnConfig[];
 }
 
 export interface IssueFieldValue {
@@ -43,5 +50,7 @@ export interface Issue {
   idReadable: string;
   summary: string;
   resolved: number | null;
+  created: number | null;
+  updated: number | null;
   fields: IssueField[];
 }
