@@ -2,8 +2,8 @@
   "$schema": "https://json.schemastore.org/youtrack-app.json",
   "name": "hello-world-app",
   "title": "Hello World App",
-  "description": "A simple Hello World dashboard widget for YouTrack",
-  "version": "1.0.0",
+  "description": "A dashboard widget that displays a list of YouTrack issues matching a search query",
+  "version": "1.1.0",
   "icon": "hello-world-logo.svg",
   "iconDark": "hello-world-logo-dark.svg",
   "url": "https://github.com/alex-pf/youtrack-hello-world-app",
@@ -16,11 +16,12 @@
   "widgets": [
     {
       "key": "hello-world-widget",
-      "name": "Hello World",
-      "description": "A simple Hello World dashboard widget",
+      "name": "Hello World Issues",
+      "description": "Displays a list of YouTrack issues matching a search query",
       "iconPath": "hello-world/widget-icon.svg",
       "indexPath": "hello-world/index.html",
-      "extensionPoint": "DASHBOARD_WIDGET"
+      "extensionPoint": "DASHBOARD_WIDGET",
+      "permissions": ["ISSUE_READ"]
     }
   ]
 }

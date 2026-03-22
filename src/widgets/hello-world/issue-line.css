@@ -1,0 +1,118 @@
+.il-issue {
+  position: relative;
+  overflow-x: hidden;
+  margin: 0 -4px;
+  padding: 4px;
+  line-height: 20px;
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.il-issue:hover {
+  background-color: var(--ring-hover-background-color);
+}
+
+.il-issue--expanded {
+  background-color: var(--ring-content-background-color);
+  box-shadow: 0 1px 4px var(--ring-borders-color);
+}
+
+.il-colored-square {
+  position: absolute;
+  top: 6px;
+  display: inline-block;
+  width: 15px;
+  height: 13px;
+  text-align: center;
+  vertical-align: text-bottom;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  font-size: 10px;
+  line-height: 13px;
+}
+
+.il-issue-info {
+  display: inline-block;
+  padding-right: calc(2 * var(--ring-unit));
+  padding-left: calc(3 * var(--ring-unit));
+}
+
+.il-issue-id {
+  white-space: nowrap;
+  color: var(--ring-link-color);
+  text-decoration: none;
+  font-size: var(--ring-font-size-smaller);
+}
+
+.il-issue-id:hover {
+  text-decoration: underline;
+}
+
+.il-issue-id--resolved {
+  text-decoration: line-through;
+  color: var(--ring-secondary-color);
+}
+
+.il-issue-summary {
+  margin-left: var(--ring-unit);
+  color: var(--ring-text-color);
+  text-decoration: none;
+}
+
+.il-issue-summary:hover {
+  color: var(--ring-link-hover-color);
+}
+
+.il-issue-summary--resolved {
+  color: var(--ring-secondary-color);
+}
+
+.il-toggler {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  font-size: 10px;
+  color: var(--ring-icon-secondary-color);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.il-issue:hover .il-toggler,
+.il-issue--expanded .il-toggler {
+  opacity: 1;
+}
+
+.il-fields {
+  margin: 4px 0 2px 20px;
+  font-size: var(--ring-font-size-smaller);
+}
+
+.il-field-row {
+  display: flex;
+  gap: calc(2 * var(--ring-unit));
+  padding: 1px 0;
+}
+
+.il-field-name {
+  color: var(--ring-secondary-color);
+  white-space: nowrap;
+  min-width: 80px;
+}
+
+.il-field-value {
+  color: var(--ring-text-color);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.il-field-color {
+  display: inline-block;
+  width: 14px;
+  height: 12px;
+  text-align: center;
+  border-radius: 2px;
+  font-size: 9px;
+  line-height: 12px;
+}
