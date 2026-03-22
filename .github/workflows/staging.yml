@@ -1,0 +1,52 @@
+name: Staging — Build & Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: youtrack-app-dist
+          path: dist/
+
+  deploy:
+    name: Deploy to Staging
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: youtrack-app-dist
+          path: dist/
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - run: npm install -g @jetbrains/youtrack-apps-tools
+
+      - name: Upload to YouTrack (Staging)
+        env:
+          YOUTRACK_HOST: ${{ secrets.YOUTRACK_STAGING_HOST }}
+          YOUTRACK_API_TOKEN: ${{ secrets.YOUTRACK_STAGING_TOKEN }}
+        run: youtrack-app upload dist
