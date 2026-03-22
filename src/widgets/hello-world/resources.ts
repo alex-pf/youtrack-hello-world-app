@@ -10,26 +10,33 @@ export const ISSUES_PACK_SIZE = 50;
 
 export async function loadIssues(
   host: EmbeddableWidgetAPI,
-  query: string,
+  search: string,
   skip = 0
 ): Promise<Issue[]> {
-  const encodedQuery = encodeURIComponent(query);
-  return await host.fetchYouTrack<Issue[]>(
-    `api/issues?fields=${ISSUE_FIELDS}&query=${encodedQuery}&$top=${ISSUES_PACK_SIZE}&$skip=${skip}`
-  );
+  return await host.fetchYouTrack<Issue[]>('api/issues', {
+    query: {
+      fields: ISSUE_FIELDS,
+      query: search,
+      $top: String(ISSUES_PACK_SIZE),
+      $skip: String(skip)
+    }
+  });
 }
 
 export async function loadIssuesCount(
   host: EmbeddableWidgetAPI,
-  query: string
+  search: string
 ): Promise<number> {
   const result = await host.fetchYouTrack<{count: number}>(
-    'api/issuesGetter/count?fields=count',
+    'api/issuesGetter/count',
     {
       method: 'POST',
+      query: {
+        fields: 'count'
+      },
       body: {
         folder: null,
-        query: query || null
+        query: search || null
       }
     }
   );
