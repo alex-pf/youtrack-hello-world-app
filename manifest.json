@@ -3,7 +3,7 @@
   "name": "hello-world-app",
   "title": "Hello World App",
   "description": "A dashboard widget that displays a list of YouTrack issues matching a search query",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "icon": "hello-world-logo.svg",
   "iconDark": "hello-world-logo-dark.svg",
   "url": "https://github.com/alex-pf/youtrack-hello-world-app",
@@ -21,6 +21,7 @@
       "iconPath": "hello-world/widget-icon.svg",
       "indexPath": "hello-world/index.html",
       "extensionPoint": "DASHBOARD_WIDGET",
+      "settingsSchemaPath": "hello-world/widget-settings.json",
       "permissions": ["READ_ISSUE"]
     }
   ]

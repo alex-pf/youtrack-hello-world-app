@@ -103,10 +103,10 @@ const AppComponent: React.FC<AppProps> = ({host}) => {
   }, [config, host, issues.length, isLoadingMore]);
 
   const handleSaveConfig = useCallback(async (newConfig: WidgetConfig) => {
-    await host.storeConfig(newConfig);
     setConfig(newConfig);
     setIsConfiguring(false);
-    host.exitConfigMode();
+    // storeConfig persists to server and exits config mode automatically
+    await host.storeConfig(newConfig);
   }, [host]);
 
   const handleCancelConfig = useCallback(() => {
