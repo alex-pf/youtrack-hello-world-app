@@ -11,22 +11,8 @@
       "type": "string"
     },
     "visibleFields": {
-      "title": "Visible fields",
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "key": {
-            "type": "string"
-          },
-          "label": {
-            "type": "string"
-          },
-          "builtin": {
-            "type": "boolean"
-          }
-        }
-      }
+      "title": "Visible fields (JSON)",
+      "type": "string"
     }
   }
 }

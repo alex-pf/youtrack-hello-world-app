@@ -1,7 +1,8 @@
 import React, {memo, useCallback, useEffect, useState} from 'react';
 import LoaderInline from '@jetbrains/ring-ui-built/components/loader-inline/loader-inline';
 import type {EmbeddableWidgetAPI} from '../../../@types/globals';
-import type {Issue, WidgetConfig} from './types';
+import type {Issue, WidgetConfig, StoredWidgetConfig} from './types';
+import {parseStoredConfig, serializeConfig} from './types';
 import {loadIssues, loadIssuesCount, ISSUES_PACK_SIZE} from './resources';
 import {Configuration} from './configuration';
 import {IssueLine} from './issue-line';
@@ -24,7 +25,8 @@ const AppComponent: React.FC<AppProps> = ({host}) => {
   // Initialize widget
   useEffect(() => {
     async function init() {
-      const savedConfig = await host.readConfig<WidgetConfig>();
+      const raw = await host.readConfig<StoredWidgetConfig>();
+      const savedConfig = parseStoredConfig(raw);
 
       // Get YouTrack base URL via Hub services
       try {
@@ -106,7 +108,7 @@ const AppComponent: React.FC<AppProps> = ({host}) => {
     setConfig(newConfig);
     setIsConfiguring(false);
     // storeConfig persists to server and exits config mode automatically
-    await host.storeConfig(newConfig);
+    await host.storeConfig(serializeConfig(newConfig));
   }, [host]);
 
   const handleCancelConfig = useCallback(() => {
