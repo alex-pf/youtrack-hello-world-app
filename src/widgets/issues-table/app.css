@@ -1,0 +1,37 @@
+.hw-issues-list {
+  padding: 4px 16px;
+}
+
+.hw-center {
+  display: flex;
+  justify-content: center;
+  padding: 24px 16px;
+}
+
+.hw-error {
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--ring-error-color);
+}
+
+.hw-empty {
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--ring-secondary-color);
+}
+
+.hw-load-more {
+  margin: 8px 0;
+  padding: 6px 0;
+  text-align: center;
+  border: 1px dashed var(--ring-borders-color);
+  border-radius: 3px;
+  font-size: var(--ring-font-size-smaller);
+  color: var(--ring-link-color);
+  cursor: pointer;
+}
+
+.hw-load-more:hover {
+  border-color: var(--ring-link-hover-color);
+  color: var(--ring-link-hover-color);
+}

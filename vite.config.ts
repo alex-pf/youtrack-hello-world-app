@@ -39,7 +39,8 @@ export default defineConfig({
     assetsDir: 'widgets/assets',
     rollupOptions: {
       input: {
-        helloWorld: resolve(__dirname, 'src/widgets/hello-world/index.html')
+        helloWorld: resolve(__dirname, 'src/widgets/hello-world/index.html'),
+        issuesTable: resolve(__dirname, 'src/widgets/issues-table/index.html')
       }
     }
   }

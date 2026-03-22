@@ -1,0 +1,18 @@
+{
+  "title": "Issues List Widget Settings",
+  "type": "object",
+  "properties": {
+    "search": {
+      "title": "Search query",
+      "type": "string"
+    },
+    "title": {
+      "title": "Widget title",
+      "type": "string"
+    },
+    "visibleFields": {
+      "title": "Visible fields (JSON)",
+      "type": "string"
+    }
+  }
+}

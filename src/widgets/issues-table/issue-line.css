@@ -1,0 +1,99 @@
+.il-issue {
+  margin: 0 -4px;
+  padding: 4px;
+  border-radius: 3px;
+}
+
+.il-issue:hover {
+  background-color: var(--ring-hover-background-color);
+}
+
+/* Main row — flex-wrap so items flow to next line if needed */
+.il-main-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  line-height: 22px;
+}
+
+/* Priority colored square */
+.il-colored-square {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 14px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  font-size: 10px;
+  line-height: 14px;
+}
+
+/* Issue ID */
+.il-issue-id {
+  flex-shrink: 0;
+  white-space: nowrap;
+  color: var(--ring-link-color);
+  text-decoration: none;
+  font-size: var(--ring-font-size-smaller);
+}
+
+.il-issue-id:hover {
+  text-decoration: underline;
+}
+
+.il-issue-id--resolved {
+  text-decoration: line-through;
+  color: var(--ring-secondary-color);
+}
+
+/* Issue summary */
+.il-issue-summary {
+  color: var(--ring-text-color);
+  text-decoration: none;
+  /* Take remaining space but allow wrapping */
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.il-issue-summary:hover {
+  color: var(--ring-link-hover-color);
+}
+
+.il-issue-summary--resolved {
+  color: var(--ring-secondary-color);
+}
+
+/* Field tags — inline badges */
+.il-tag {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 18px;
+  padding: 0 6px;
+  border-radius: 3px;
+  background: var(--ring-hover-background-color);
+}
+
+.il-tag-label {
+  color: var(--ring-secondary-color);
+}
+
+.il-tag-value {
+  color: var(--ring-text-color);
+}
+
+/* Colored tag (e.g. Priority, State) — value shown inside color badge */
+.il-tag-color {
+  display: inline-block;
+  padding: 0 5px;
+  margin: -0px -6px;
+  border-radius: 3px;
+  font-size: 11px;
+  line-height: 18px;
+}
