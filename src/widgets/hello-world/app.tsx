@@ -47,6 +47,18 @@ const AppComponent: React.FC<AppProps> = ({host}) => {
     init();
   }, [host]);
 
+  // Listen for "Edit" button click from the widget toolbar
+  useEffect(() => {
+    const handleConfigure = () => {
+      setIsConfiguring(true);
+      host.enterConfigMode();
+    };
+    window.addEventListener('yt-widget-configure', handleConfigure);
+    return () => {
+      window.removeEventListener('yt-widget-configure', handleConfigure);
+    };
+  }, [host]);
+
   // Load issues when config changes
   useEffect(() => {
     if (!config?.search) return;

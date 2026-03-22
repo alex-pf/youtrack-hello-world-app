@@ -56,6 +56,57 @@ export async function loadIssues(
   });
 }
 
+const QUERY_ASSIST_FIELDS = 'query,caret,styleRanges(start,length,style),suggestions(options,prefix,option,suffix,description,matchingStart,matchingEnd,caret,completionStart,completionEnd,group,icon)';
+
+interface RawAssistResponse {
+  query?: string;
+  caret?: number;
+  styleRanges?: Array<{start: number; length: number; style: string}>;
+  suggestions?: Array<Record<string, unknown>>;
+}
+
+/**
+ * Fetch search assist suggestions from YouTrack.
+ * Returns data compatible with Ring UI QueryAssist dataSource.
+ */
+export async function queryAssistDataSource(
+  host: EmbeddableWidgetAPI,
+  params: {query: string; caret: number}
+) {
+  const raw = await host.fetchYouTrack<RawAssistResponse>('search/assist', {
+    method: 'POST',
+    query: {
+      fields: QUERY_ASSIST_FIELDS,
+    },
+    body: {
+      query: params.query,
+      caret: params.caret,
+    }
+  });
+
+  // Normalize suggestions — Ring UI requires `description` and `group` as strings
+  const suggestions = (raw.suggestions || []).map(s => ({
+    prefix: (s.prefix as string) || '',
+    option: (s.option as string) || '',
+    suffix: (s.suffix as string) || '',
+    description: (s.description as string) || '',
+    group: (s.group as string) || '',
+    matchingStart: s.matchingStart as number | undefined,
+    matchingEnd: s.matchingEnd as number | undefined,
+    caret: s.caret as number | undefined,
+    completionStart: s.completionStart as number | undefined,
+    completionEnd: s.completionEnd as number | undefined,
+    icon: s.icon as string | undefined,
+  }));
+
+  return {
+    query: raw.query,
+    caret: raw.caret,
+    styleRanges: raw.styleRanges as Array<{start: number; length: number; style: string}> | undefined,
+    suggestions,
+  };
+}
+
 export async function loadIssuesCount(
   host: EmbeddableWidgetAPI,
   search: string
