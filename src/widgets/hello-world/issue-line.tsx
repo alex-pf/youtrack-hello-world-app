@@ -1,4 +1,4 @@
-import React, {memo, useState} from 'react';
+import React, {memo} from 'react';
 import type {Issue, IssueField, IssueFieldValue, FieldColumnConfig} from './types';
 import './issue-line.css';
 
@@ -46,20 +46,10 @@ function getColoredSquare(issue: Issue) {
   };
 }
 
-function getValuableFields(issue: Issue): IssueField[] {
-  return (issue.fields || []).filter(f => {
-    const values = toArray(f.value);
-    if (values.length === 0) return false;
-    const valueType = f.projectCustomField?.field?.fieldType?.valueType;
-    return valueType !== 'text';
-  });
-}
-
 function getFieldValuePresentation(field: IssueField): string {
   const valueType = field.projectCustomField?.field?.fieldType?.valueType || '';
 
   return toArray(field.value).map(v => {
-    // Handle date and datetime types
     if (valueType.indexOf('date') > -1) {
       const ts = (v as unknown as number);
       if (typeof ts === 'number' && ts > 0) {
@@ -82,9 +72,6 @@ function formatTimestamp(ts: number, withTime = false): string {
   return `${day}.${month}.${year} ${hours}:${mins}`;
 }
 
-/**
- * Get the presentation value for a visible field config from an issue.
- */
 function getVisibleFieldValue(issue: Issue, fieldConfig: FieldColumnConfig): string | null {
   if (fieldConfig.builtin) {
     const ts = fieldConfig.key === 'created' ? issue.created : issue.updated;
@@ -94,7 +81,6 @@ function getVisibleFieldValue(issue: Issue, fieldConfig: FieldColumnConfig): str
     return null;
   }
 
-  // Custom field — find by field name
   const issueField = (issue.fields || []).find(
     f => f.projectCustomField?.field?.name === fieldConfig.key
   );
@@ -106,9 +92,6 @@ function getVisibleFieldValue(issue: Issue, fieldConfig: FieldColumnConfig): str
   return getFieldValuePresentation(issueField);
 }
 
-/**
- * Get color info for a visible custom field.
- */
 function getVisibleFieldColor(issue: Issue, fieldConfig: FieldColumnConfig) {
   if (fieldConfig.builtin) return null;
 
@@ -122,16 +105,13 @@ function getVisibleFieldColor(issue: Issue, fieldConfig: FieldColumnConfig) {
     return {
       background: firstValue.color.background,
       color: firstValue.color.foreground,
-      letter: (getName(firstValue) || 'C')[0].toUpperCase(),
     };
   }
   return null;
 }
 
 const IssueLineComponent: React.FC<Props> = ({issue, baseUrl, visibleFields}) => {
-  const [expanded, setExpanded] = useState(false);
   const coloredSquare = getColoredSquare(issue);
-  const valuableFields = getValuableFields(issue);
   const isResolved = issue.resolved != null;
   const normalizedUrl = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
   const issueUrl = `${normalizedUrl}issue/${issue.idReadable}`;
@@ -139,21 +119,18 @@ const IssueLineComponent: React.FC<Props> = ({issue, baseUrl, visibleFields}) =>
   const hasVisibleFields = visibleFields && visibleFields.length > 0;
 
   return (
-    <div
-      className={`il-issue ${expanded ? 'il-issue--expanded' : ''}`}
-      onClick={() => setExpanded(!expanded)}
-    >
-      {coloredSquare && (
-        <span
-          className="il-colored-square"
-          style={coloredSquare.style}
-          title={coloredSquare.title}
-        >
-          {coloredSquare.letter}
-        </span>
-      )}
+    <div className="il-issue">
+      <div className="il-main-row">
+        {coloredSquare && (
+          <span
+            className="il-colored-square"
+            style={coloredSquare.style}
+            title={coloredSquare.title}
+          >
+            {coloredSquare.letter}
+          </span>
+        )}
 
-      <div className="il-issue-info" onClick={e => e.stopPropagation()}>
         <a
           className={`il-issue-id ${isResolved ? 'il-issue-id--resolved' : ''}`}
           href={issueUrl}
@@ -162,6 +139,7 @@ const IssueLineComponent: React.FC<Props> = ({issue, baseUrl, visibleFields}) =>
         >
           {issue.idReadable}
         </a>
+
         <a
           className={`il-issue-summary ${isResolved ? 'il-issue-summary--resolved' : ''}`}
           href={issueUrl}
@@ -170,65 +148,30 @@ const IssueLineComponent: React.FC<Props> = ({issue, baseUrl, visibleFields}) =>
         >
           {issue.summary}
         </a>
+
+        {hasVisibleFields && visibleFields!.map(fc => {
+          const val = getVisibleFieldValue(issue, fc);
+          if (!val) return null;
+          const colorInfo = getVisibleFieldColor(issue, fc);
+          return (
+            <span key={fc.key} className="il-tag" title={fc.label}>
+              {colorInfo ? (
+                <span
+                  className="il-tag-color"
+                  style={{background: colorInfo.background, color: colorInfo.color}}
+                >
+                  {val}
+                </span>
+              ) : (
+                <>
+                  <span className="il-tag-label">{fc.label}:</span>
+                  <span className="il-tag-value">{val}</span>
+                </>
+              )}
+            </span>
+          );
+        })}
       </div>
-
-      <div className="il-toggler">
-        {expanded ? '▲' : '▼'}
-      </div>
-
-      {/* Visible fields — shown inline under the issue summary */}
-      {hasVisibleFields && (
-        <div className="il-visible-fields">
-          {visibleFields!.map(fc => {
-            const val = getVisibleFieldValue(issue, fc);
-            if (!val) return null;
-            const colorInfo = getVisibleFieldColor(issue, fc);
-            return (
-              <span key={fc.key} className="il-visible-field" title={fc.label}>
-                <span className="il-visible-field-label">{fc.label}:</span>
-                {colorInfo && (
-                  <span
-                    className="il-field-color"
-                    style={{background: colorInfo.background, color: colorInfo.color}}
-                  >
-                    {colorInfo.letter}
-                  </span>
-                )}
-                <span className="il-visible-field-value">{val}</span>
-              </span>
-            );
-          })}
-        </div>
-      )}
-
-      {expanded && valuableFields.length > 0 && (
-        <div className="il-fields">
-          {valuableFields.map(field => (
-            <div key={field.id} className="il-field-row">
-              <span className="il-field-name">
-                {field.projectCustomField.field?.localizedName || field.projectCustomField.field?.name}
-              </span>
-              <span className="il-field-value">
-                {getFieldValuePresentation(field)}
-                {(() => {
-                  const firstValue = toArray(field.value)[0];
-                  if (firstValue && isColoredValue(firstValue) && firstValue.color) {
-                    return (
-                      <span
-                        className="il-field-color"
-                        style={{background: firstValue.color.background, color: firstValue.color.foreground}}
-                      >
-                        {(getName(firstValue) || 'C')[0].toUpperCase()}
-                      </span>
-                    );
-                  }
-                  return null;
-                })()}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 };
