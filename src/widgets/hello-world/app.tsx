@@ -111,6 +111,7 @@ const AppComponent: React.FC<AppProps> = ({host}) => {
     return (
       <Configuration
         config={config}
+        host={host}
         onSave={handleSaveConfig}
         onCancel={handleCancelConfig}
       />
@@ -141,7 +142,12 @@ const AppComponent: React.FC<AppProps> = ({host}) => {
   return (
     <div className="hw-issues-list">
       {issues.map(issue => (
-        <IssueLine key={issue.id} issue={issue} baseUrl={baseUrl} />
+        <IssueLine
+          key={issue.id}
+          issue={issue}
+          baseUrl={baseUrl}
+          visibleFields={config?.visibleFields}
+        />
       ))}
 
       {remainingCount > 0 && !isLoadingMore && (

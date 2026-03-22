@@ -116,3 +116,29 @@
   font-size: 9px;
   line-height: 12px;
 }
+
+/* Visible fields (inline under summary) */
+.il-visible-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 2px;
+  padding-left: calc(3 * var(--ring-unit));
+  font-size: var(--ring-font-size-smaller);
+  line-height: 18px;
+}
+
+.il-visible-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+
+.il-visible-field-label {
+  color: var(--ring-secondary-color);
+}
+
+.il-visible-field-value {
+  color: var(--ring-text-color);
+}
