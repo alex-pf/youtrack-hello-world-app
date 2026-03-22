@@ -5,7 +5,7 @@ import type {Issue, WidgetConfig, StoredWidgetConfig} from './types';
 import {parseStoredConfig, serializeConfig} from './types';
 import {loadIssues, loadIssuesCount, ISSUES_PACK_SIZE} from './resources';
 import {Configuration} from './configuration';
-import {IssueLine} from './issue-line';
+import {IssuesTable} from './issues-table';
 import './app.css';
 
 interface AppProps {
@@ -155,14 +155,11 @@ const AppComponent: React.FC<AppProps> = ({host}) => {
 
   return (
     <div className="hw-issues-list">
-      {issues.map(issue => (
-        <IssueLine
-          key={issue.id}
-          issue={issue}
-          baseUrl={baseUrl}
-          visibleFields={config?.visibleFields}
-        />
-      ))}
+      <IssuesTable
+        issues={issues}
+        baseUrl={baseUrl}
+        visibleFields={config?.visibleFields}
+      />
 
       {remainingCount > 0 && !isLoadingMore && (
         <div className="hw-load-more" onClick={handleLoadMore}>

@@ -46,6 +46,10 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
   const [availableFieldItems, setAvailableFieldItems] = useState<FieldSelectItem[]>([]);
   const [isLoadingFields, setIsLoadingFields] = useState(false);
 
+  // Drag state
+  const dragIndexRef = useRef<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
   // Debounce timer for loading fields after query changes
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -108,6 +112,42 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
     setSelectedFields(selected.map(selectItemToField));
   };
 
+  // Drag-and-drop handlers for column ordering
+  const handleDragStart = useCallback((index: number) => {
+    dragIndexRef.current = index;
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    setDragOverIndex(index);
+  }, []);
+
+  const handleDrop = useCallback((index: number) => {
+    const fromIndex = dragIndexRef.current;
+    if (fromIndex === null || fromIndex === index) {
+      dragIndexRef.current = null;
+      setDragOverIndex(null);
+      return;
+    }
+    setSelectedFields(prev => {
+      const updated = [...prev];
+      const [moved] = updated.splice(fromIndex, 1);
+      updated.splice(index, 0, moved);
+      return updated;
+    });
+    dragIndexRef.current = null;
+    setDragOverIndex(null);
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    dragIndexRef.current = null;
+    setDragOverIndex(null);
+  }, []);
+
+  const handleRemoveField = useCallback((index: number) => {
+    setSelectedFields(prev => prev.filter((_, i) => i !== index));
+  }, []);
+
   return (
     <form className="ring-form" style={{padding: '8px 16px'}}>
       <span className="ring-form__title">Настройка виджета</span>
@@ -134,7 +174,7 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
 
       <div style={{marginTop: 12, marginBottom: 8}}>
         <span style={{fontSize: 12, color: 'var(--ring-secondary-color)', display: 'block', marginBottom: 4}}>
-          Отображаемые поля
+          Колонки таблицы
         </span>
         {isLoadingFields && availableFieldItems.length === 0 ? (
           <LoaderInline />
@@ -143,7 +183,7 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
             multiple
             filter
             tags={{}}
-            label="Выберите поля"
+            label="Выберите колонки"
             size={InputSize.FULL}
             data={availableFieldItems}
             selected={selectedSelectItems}
@@ -153,6 +193,57 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
           />
         )}
       </div>
+
+      {/* Column order — drag to reorder */}
+      {selectedFields.length > 1 && (
+        <div style={{marginTop: 4, marginBottom: 8}}>
+          <span style={{fontSize: 12, color: 'var(--ring-secondary-color)', display: 'block', marginBottom: 4}}>
+            Порядок колонок (перетащите для изменения)
+          </span>
+          <div style={{display: 'flex', flexDirection: 'column', gap: 2}}>
+            {selectedFields.map((fc, idx) => (
+              <div
+                key={fc.key}
+                draggable
+                onDragStart={() => handleDragStart(idx)}
+                onDragOver={(e) => handleDragOver(e, idx)}
+                onDrop={() => handleDrop(idx)}
+                onDragEnd={handleDragEnd}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '4px 8px',
+                  borderRadius: 3,
+                  cursor: 'grab',
+                  fontSize: 13,
+                  background: dragOverIndex === idx
+                    ? 'var(--ring-hover-background-color)'
+                    : 'var(--ring-content-background-color)',
+                  border: '1px solid var(--ring-borders-color)',
+                  transition: 'background 0.1s',
+                }}
+              >
+                <span style={{color: 'var(--ring-icon-secondary-color)', fontSize: 11}}>☰</span>
+                <span style={{flex: 1}}>{fc.label}</span>
+                <span
+                  style={{
+                    color: 'var(--ring-icon-secondary-color)',
+                    cursor: 'pointer',
+                    fontSize: 14,
+                    lineHeight: 1,
+                    padding: '0 2px',
+                  }}
+                  title="Убрать"
+                  onClick={() => handleRemoveField(idx)}
+                >
+                  ×
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <ButtonSet>
         <Button primary disabled={!search.trim()} onClick={handleSave}>
