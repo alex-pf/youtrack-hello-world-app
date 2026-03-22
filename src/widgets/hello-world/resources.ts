@@ -41,6 +41,30 @@ export function extractAvailableFields(issues: Issue[]): FieldColumnConfig[] {
   return fields;
 }
 
+/**
+ * Load all available fields for a given search query.
+ * Fetches a sample of issues and extracts unique custom fields,
+ * then combines with built-in fields.
+ */
+export async function loadFieldsForQuery(
+  host: EmbeddableWidgetAPI,
+  search: string
+): Promise<FieldColumnConfig[]> {
+  if (!search.trim()) return [...BUILTIN_FIELDS];
+
+  const issues = await host.fetchYouTrack<Issue[]>('issues', {
+    query: {
+      fields: ISSUE_FIELDS,
+      query: search,
+      $top: '50',
+      $skip: '0'
+    }
+  });
+
+  const customFields = extractAvailableFields(issues);
+  return [...BUILTIN_FIELDS, ...customFields];
+}
+
 export async function loadIssues(
   host: EmbeddableWidgetAPI,
   search: string,

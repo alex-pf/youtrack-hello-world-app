@@ -1,16 +1,15 @@
-import React, {memo, useCallback, useEffect, useState} from 'react';
+import React, {memo, useCallback, useEffect, useRef, useState} from 'react';
 import Input from '@jetbrains/ring-ui-built/components/input/input';
 import {Size as InputSize} from '@jetbrains/ring-ui-built/components/input/input';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import ButtonSet from '@jetbrains/ring-ui-built/components/button-set/button-set';
-import {ControlsHeight} from '@jetbrains/ring-ui-built/components/global/controls-height';
-import Checkbox from '@jetbrains/ring-ui-built/components/checkbox/checkbox';
+import Select, {type SelectItem} from '@jetbrains/ring-ui-built/components/select/select';
 import LoaderInline from '@jetbrains/ring-ui-built/components/loader-inline/loader-inline';
 import QueryAssist from '@jetbrains/ring-ui-built/components/query-assist/query-assist';
 import type {QueryAssistRequestParams} from '@jetbrains/ring-ui-built/components/query-assist/query-assist';
 import type {EmbeddableWidgetAPI} from '../../../@types/globals';
 import type {WidgetConfig, FieldColumnConfig} from './types';
-import {BUILTIN_FIELDS, extractAvailableFields, loadIssues, queryAssistDataSource} from './resources';
+import {loadFieldsForQuery, queryAssistDataSource} from './resources';
 
 interface Props {
   config: WidgetConfig | null;
@@ -19,16 +18,38 @@ interface Props {
   onCancel: () => void;
 }
 
+interface FieldData {
+  fieldConfig: FieldColumnConfig;
+}
+
+type FieldSelectItem = SelectItem<FieldData>;
+
+function fieldToSelectItem(fc: FieldColumnConfig): FieldSelectItem {
+  return {
+    key: fc.key,
+    label: fc.label,
+    fieldConfig: fc,
+  } as FieldSelectItem;
+}
+
+function selectItemToField(item: FieldSelectItem): FieldColumnConfig {
+  const fc = (item as unknown as FieldData).fieldConfig;
+  return fc ?? {key: String(item.key), label: item.label || String(item.key)};
+}
+
 const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel}) => {
   const [search, setSearch] = useState(config?.search ?? '');
   const [title, setTitle] = useState(config?.title ?? '');
   const [selectedFields, setSelectedFields] = useState<FieldColumnConfig[]>(
     config?.visibleFields ?? []
   );
-  const [availableFields, setAvailableFields] = useState<FieldColumnConfig[]>([]);
+  const [availableFieldItems, setAvailableFieldItems] = useState<FieldSelectItem[]>([]);
   const [isLoadingFields, setIsLoadingFields] = useState(false);
 
-  // Data source for QueryAssist — proxies to YouTrack search/assist API
+  // Debounce timer for loading fields after query changes
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Data source for QueryAssist
   const queryAssistHandler = useCallback(async (params: QueryAssistRequestParams) => {
     try {
       return await queryAssistDataSource(host, {
@@ -40,47 +61,36 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
     }
   }, [host]);
 
-  // Load available fields when search query is set
-  const loadAvailableFields = useCallback(async (query: string) => {
-    if (!query.trim()) {
-      setAvailableFields([]);
-      return;
-    }
+  // Load fields for the current search query
+  const refreshFields = useCallback(async (query: string) => {
     setIsLoadingFields(true);
     try {
-      const issues = await loadIssues(host, query.trim(), 0);
-      const customFields = extractAvailableFields(issues);
-      setAvailableFields(customFields);
+      const fields = await loadFieldsForQuery(host, query);
+      setAvailableFieldItems(fields.map(fieldToSelectItem));
     } catch {
-      setAvailableFields([]);
+      // keep existing items on error
     } finally {
       setIsLoadingFields(false);
     }
   }, [host]);
 
-  // Load fields on mount if we already have a search query
+  // Debounced field loading when search changes
+  const onSearchChange = useCallback((query: string) => {
+    setSearch(query);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      refreshFields(query);
+    }, 800);
+  }, [refreshFields]);
+
+  // Load fields on mount
   useEffect(() => {
-    if (config?.search) {
-      loadAvailableFields(config.search);
-    }
-  }, [config?.search, loadAvailableFields]);
-
-  const handleLoadFields = () => {
-    loadAvailableFields(search);
-  };
-
-  const isFieldSelected = (field: FieldColumnConfig): boolean => {
-    return selectedFields.some(f => f.key === field.key);
-  };
-
-  const toggleField = (field: FieldColumnConfig) => {
-    setSelectedFields(prev => {
-      if (prev.some(f => f.key === field.key)) {
-        return prev.filter(f => f.key !== field.key);
-      }
-      return [...prev, field];
-    });
-  };
+    refreshFields(config?.search ?? search);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSave = () => {
     if (!search.trim()) return;
@@ -91,7 +101,12 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
     });
   };
 
-  const allFields = [...BUILTIN_FIELDS, ...availableFields];
+  // Convert current selected fields to SelectItem[]
+  const selectedSelectItems: FieldSelectItem[] = selectedFields.map(fieldToSelectItem);
+
+  const handleFieldsChange = (selected: FieldSelectItem[]) => {
+    setSelectedFields(selected.map(selectItemToField));
+  };
 
   return (
     <form className="ring-form" style={{padding: '8px 16px'}}>
@@ -111,58 +126,31 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
           query={search}
           placeholder="project: DEMO State: Open"
           dataSource={queryAssistHandler}
-          onChange={({query}) => setSearch(query)}
-          onApply={({query}) => setSearch(query)}
+          onChange={({query}) => onSearchChange(query)}
+          onApply={({query}) => onSearchChange(query)}
           size={InputSize.M}
         />
       </div>
 
       <div style={{marginTop: 12, marginBottom: 8}}>
-        <div style={{display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8}}>
-          <span className="ring-form__label" style={{margin: 0, fontSize: 13, fontWeight: 500}}>
-            Отображаемые поля
-          </span>
-          {search.trim() && (
-            <Button
-              height={ControlsHeight.S}
-              onClick={handleLoadFields}
-              disabled={isLoadingFields}
-            >
-              {availableFields.length > 0 ? 'Обновить' : 'Загрузить поля'}
-            </Button>
-          )}
-        </div>
-
-        {isLoadingFields && <LoaderInline />}
-
-        {!isLoadingFields && allFields.length > 0 && (
-          <div style={{
-            maxHeight: 200,
-            overflowY: 'auto',
-            border: '1px solid var(--ring-borders-color)',
-            borderRadius: 3,
-            padding: '4px 8px',
-          }}>
-            {allFields.map(field => (
-              <div key={field.key} style={{padding: '2px 0'}}>
-                <Checkbox
-                  checked={isFieldSelected(field)}
-                  onChange={() => toggleField(field)}
-                  label={field.label}
-                />
-              </div>
-            ))}
-          </div>
-        )}
-
-        {!isLoadingFields && availableFields.length === 0 && search.trim() && (
-          <div style={{
-            fontSize: 12,
-            color: 'var(--ring-secondary-color)',
-            marginTop: 4,
-          }}>
-            Нажмите «Загрузить поля», чтобы увидеть доступные поля для выбранного запроса
-          </div>
+        <span style={{fontSize: 12, color: 'var(--ring-secondary-color)', display: 'block', marginBottom: 4}}>
+          Отображаемые поля
+        </span>
+        {isLoadingFields && availableFieldItems.length === 0 ? (
+          <LoaderInline />
+        ) : (
+          <Select
+            multiple
+            filter
+            tags={{}}
+            label="Выберите поля"
+            size={InputSize.FULL}
+            data={availableFieldItems}
+            selected={selectedSelectItems}
+            onChange={handleFieldsChange}
+            loading={isLoadingFields}
+            notFoundMessage="Нет доступных полей"
+          />
         )}
       </div>
 
