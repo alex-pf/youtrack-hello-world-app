@@ -1,10 +1,6 @@
 .il-issue {
-  position: relative;
-  overflow-x: hidden;
   margin: 0 -4px;
   padding: 4px;
-  line-height: 20px;
-  cursor: pointer;
   border-radius: 3px;
 }
 
@@ -12,33 +8,32 @@
   background-color: var(--ring-hover-background-color);
 }
 
-.il-issue--expanded {
-  background-color: var(--ring-content-background-color);
-  box-shadow: 0 1px 4px var(--ring-borders-color);
+/* Main row — flex-wrap so items flow to next line if needed */
+.il-main-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  line-height: 22px;
 }
 
+/* Priority colored square */
 .il-colored-square {
-  position: absolute;
-  top: 6px;
-  display: inline-block;
-  width: 15px;
-  height: 13px;
-  text-align: center;
-  vertical-align: text-bottom;
-  white-space: nowrap;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 14px;
   border: 1px solid transparent;
   border-radius: 2px;
   font-size: 10px;
-  line-height: 13px;
+  line-height: 14px;
 }
 
-.il-issue-info {
-  display: inline-block;
-  padding-right: calc(2 * var(--ring-unit));
-  padding-left: calc(3 * var(--ring-unit));
-}
-
+/* Issue ID */
 .il-issue-id {
+  flex-shrink: 0;
   white-space: nowrap;
   color: var(--ring-link-color);
   text-decoration: none;
@@ -54,10 +49,13 @@
   color: var(--ring-secondary-color);
 }
 
+/* Issue summary */
 .il-issue-summary {
-  margin-left: var(--ring-unit);
   color: var(--ring-text-color);
   text-decoration: none;
+  /* Take remaining space but allow wrapping */
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 .il-issue-summary:hover {
@@ -68,77 +66,34 @@
   color: var(--ring-secondary-color);
 }
 
-.il-toggler {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  font-size: 10px;
-  color: var(--ring-icon-secondary-color);
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-
-.il-issue:hover .il-toggler,
-.il-issue--expanded .il-toggler {
-  opacity: 1;
-}
-
-.il-fields {
-  margin: 4px 0 2px 20px;
-  font-size: var(--ring-font-size-smaller);
-}
-
-.il-field-row {
-  display: flex;
-  gap: calc(2 * var(--ring-unit));
-  padding: 1px 0;
-}
-
-.il-field-name {
-  color: var(--ring-secondary-color);
-  white-space: nowrap;
-  min-width: 80px;
-}
-
-.il-field-value {
-  color: var(--ring-text-color);
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.il-field-color {
-  display: inline-block;
-  width: 14px;
-  height: 12px;
-  text-align: center;
-  border-radius: 2px;
-  font-size: 9px;
-  line-height: 12px;
-}
-
-/* Visible fields (inline under summary) */
-.il-visible-fields {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-  margin-top: 2px;
-  padding-left: calc(3 * var(--ring-unit));
-  font-size: var(--ring-font-size-smaller);
-  line-height: 18px;
-}
-
-.il-visible-field {
+/* Field tags — inline badges */
+.il-tag {
+  flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   gap: 3px;
   white-space: nowrap;
+  font-size: 11px;
+  line-height: 18px;
+  padding: 0 6px;
+  border-radius: 3px;
+  background: var(--ring-hover-background-color);
 }
 
-.il-visible-field-label {
+.il-tag-label {
   color: var(--ring-secondary-color);
 }
 
-.il-visible-field-value {
+.il-tag-value {
   color: var(--ring-text-color);
+}
+
+/* Colored tag (e.g. Priority, State) — value shown inside color badge */
+.il-tag-color {
+  display: inline-block;
+  padding: 0 5px;
+  margin: -0px -6px;
+  border-radius: 3px;
+  font-size: 11px;
+  line-height: 18px;
 }
