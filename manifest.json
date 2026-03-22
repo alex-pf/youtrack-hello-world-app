@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/youtrack-app.json",
   "name": "hello-world-app",
-  "title": "Hello World App",
+  "title": "Detailed Issues List",
   "description": "A dashboard widget that displays a list of YouTrack issues matching a search query",
   "version": "1.5.2",
   "icon": "hello-world-logo.svg",
@@ -16,7 +16,7 @@
   "widgets": [
     {
       "key": "hello-world-widget",
-      "name": "Hello World Issues",
+      "name": "Detailed Issues List",
       "description": "Displays a list of YouTrack issues matching a search query",
       "iconPath": "hello-world/widget-icon.svg",
       "indexPath": "hello-world/index.html",
