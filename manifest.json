@@ -21,7 +21,7 @@
       "iconPath": "hello-world/widget-icon.svg",
       "indexPath": "hello-world/index.html",
       "extensionPoint": "DASHBOARD_WIDGET",
-      "permissions": ["ISSUE_READ"]
+      "permissions": ["READ_ISSUE"]
     }
   ]
 }
