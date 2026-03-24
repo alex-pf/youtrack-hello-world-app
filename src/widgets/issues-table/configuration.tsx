@@ -37,9 +37,20 @@ function selectItemToField(item: FieldSelectItem): FieldColumnConfig {
   return fc ?? {key: String(item.key), label: item.label || String(item.key)};
 }
 
+const REFRESH_OPTIONS: SelectItem[] = [
+  {key: 0, label: 'Выключено'},
+  {key: 15, label: '15 минут'},
+  {key: 30, label: '30 минут'},
+  {key: 45, label: '45 минут'},
+  {key: 60, label: '1 час'},
+  {key: 90, label: '1.5 часа'},
+  {key: 120, label: '2 часа'},
+];
+
 const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel}) => {
   const [search, setSearch] = useState(config?.search ?? '');
   const [title, setTitle] = useState(config?.title ?? '');
+  const [refreshInterval, setRefreshInterval] = useState(config?.refreshInterval ?? 0);
   const [selectedFields, setSelectedFields] = useState<FieldColumnConfig[]>(
     config?.visibleFields ?? []
   );
@@ -102,6 +113,7 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
       search: search.trim(),
       title: title.trim() || undefined,
       visibleFields: selectedFields.length > 0 ? selectedFields : undefined,
+      refreshInterval: refreshInterval || undefined,
     });
   };
 
@@ -192,6 +204,19 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
             notFoundMessage="Нет доступных полей"
           />
         )}
+      </div>
+
+      <div style={{marginTop: 12, marginBottom: 8}}>
+        <span style={{fontSize: 12, color: 'var(--ring-secondary-color)', display: 'block', marginBottom: 4}}>
+          Автообновление
+        </span>
+        <Select
+          label="Частота обновления"
+          size={InputSize.FULL}
+          data={REFRESH_OPTIONS}
+          selected={REFRESH_OPTIONS.find(o => o.key === refreshInterval)}
+          onChange={(item: SelectItem | null) => setRefreshInterval((item?.key as number) ?? 0)}
+        />
       </div>
 
       {/* Column order — drag to reorder */}

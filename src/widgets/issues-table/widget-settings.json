@@ -13,6 +13,10 @@
     "visibleFields": {
       "title": "Visible fields (JSON)",
       "type": "string"
+    },
+    "refreshInterval": {
+      "title": "Refresh interval (minutes)",
+      "type": "integer"
     }
   }
 }
