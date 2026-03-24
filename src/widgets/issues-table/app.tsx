@@ -1,4 +1,4 @@
-import React, {memo, useCallback, useEffect, useState} from 'react';
+import React, {memo, useCallback, useEffect, useRef, useState} from 'react';
 import LoaderInline from '@jetbrains/ring-ui-built/components/loader-inline/loader-inline';
 import type {EmbeddableWidgetAPI} from '../../../@types/globals';
 import type {Issue, WidgetConfig, StoredWidgetConfig} from './types';
@@ -19,8 +19,41 @@ const AppComponent: React.FC<AppProps> = ({host}) => {
   const [totalCount, setTotalCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [baseUrl, setBaseUrl] = useState('');
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Fetch issues — reusable for initial load and refresh
+  const fetchIssues = useCallback(async (search: string, widgetTitle?: string, silent = false) => {
+    if (!silent) setIsLoading(true);
+    else setIsRefreshing(true);
+    setError(null);
+    try {
+      const [fetchedIssues, count] = await Promise.all([
+        loadIssues(host, search),
+        loadIssuesCount(host, search)
+      ]);
+      setIssues(fetchedIssues);
+      setTotalCount(count);
+      setLastUpdated(new Date());
+
+      const title = widgetTitle || search;
+      const countSuffix = count > 0 ? ` (${count})` : '';
+      host.setTitle(title + countSuffix, '');
+    } catch (e) {
+      if (!silent) {
+        setError('Не удалось загрузить задачи');
+        host.setError(e instanceof Error ? e : new Error(String(e)));
+      }
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+      host.setLoadingAnimationEnabled(false);
+    }
+  }, [host]);
 
   // Initialize widget
   useEffect(() => {
@@ -64,32 +97,35 @@ const AppComponent: React.FC<AppProps> = ({host}) => {
   // Load issues when config changes
   useEffect(() => {
     if (!config?.search) return;
+    fetchIssues(config.search, config.title);
+  }, [config, fetchIssues]);
 
-    async function fetchIssues() {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const [fetchedIssues, count] = await Promise.all([
-          loadIssues(host, config!.search),
-          loadIssuesCount(host, config!.search)
-        ]);
-        setIssues(fetchedIssues);
-        setTotalCount(count);
-
-        // Set widget title
-        const title = config!.title || config!.search;
-        const countSuffix = count > 0 ? ` (${count})` : '';
-        host.setTitle(title + countSuffix, '');
-      } catch (e) {
-        setError('Не удалось загрузить задачи');
-        host.setError(e instanceof Error ? e : new Error(String(e)));
-      } finally {
-        setIsLoading(false);
-        host.setLoadingAnimationEnabled(false);
-      }
+  // Auto-refresh timer
+  useEffect(() => {
+    if (refreshTimerRef.current) {
+      clearInterval(refreshTimerRef.current);
+      refreshTimerRef.current = null;
     }
-    fetchIssues();
-  }, [config, host]);
+
+    if (config?.search && config.refreshInterval && config.refreshInterval > 0) {
+      const ms = config.refreshInterval * 60 * 1000;
+      refreshTimerRef.current = setInterval(() => {
+        fetchIssues(config.search, config.title, true);
+      }, ms);
+    }
+
+    return () => {
+      if (refreshTimerRef.current) {
+        clearInterval(refreshTimerRef.current);
+        refreshTimerRef.current = null;
+      }
+    };
+  }, [config?.search, config?.title, config?.refreshInterval, fetchIssues]);
+
+  const handleRefresh = useCallback(() => {
+    if (!config?.search || isRefreshing) return;
+    fetchIssues(config.search, config.title, true);
+  }, [config, isRefreshing, fetchIssues]);
 
   const handleLoadMore = useCallback(async () => {
     if (!config?.search || isLoadingMore) return;
@@ -153,8 +189,29 @@ const AppComponent: React.FC<AppProps> = ({host}) => {
 
   const remainingCount = totalCount - issues.length;
 
+  const formatTime = (d: Date) => {
+    const h = String(d.getHours()).padStart(2, '0');
+    const m = String(d.getMinutes()).padStart(2, '0');
+    return `${h}:${m}`;
+  };
+
   return (
     <div className="hw-issues-list">
+      <div className="hw-toolbar">
+        <span className="hw-last-updated">
+          {lastUpdated && `Обновлено в ${formatTime(lastUpdated)}`}
+          {config?.refreshInterval ? ` · каждые ${config.refreshInterval} мин.` : ''}
+        </span>
+        <button
+          className="hw-refresh-btn"
+          onClick={handleRefresh}
+          disabled={isRefreshing}
+          title="Обновить данные"
+        >
+          {isRefreshing ? '⟳' : '↻'} Обновить
+        </button>
+      </div>
+
       <IssuesTable
         issues={issues}
         baseUrl={baseUrl}

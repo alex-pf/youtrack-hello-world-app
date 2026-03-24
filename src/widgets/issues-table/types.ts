@@ -8,6 +8,7 @@ export interface WidgetConfig {
   search: string;
   title?: string;
   visibleFields?: FieldColumnConfig[];
+  refreshInterval?: number; // minutes (0 = disabled)
 }
 
 /** Shape persisted by storeConfig — visibleFields is a JSON string */
@@ -15,6 +16,7 @@ export interface StoredWidgetConfig {
   search: string;
   title?: string;
   visibleFields?: string;
+  refreshInterval?: number;
 }
 
 export function parseStoredConfig(stored: StoredWidgetConfig | null): WidgetConfig | null {
@@ -31,6 +33,7 @@ export function parseStoredConfig(stored: StoredWidgetConfig | null): WidgetConf
     search: stored.search,
     title: stored.title,
     visibleFields: fields,
+    refreshInterval: stored.refreshInterval,
   };
 }
 
@@ -39,6 +42,7 @@ export function serializeConfig(config: WidgetConfig): StoredWidgetConfig {
     search: config.search,
     title: config.title,
     visibleFields: config.visibleFields ? JSON.stringify(config.visibleFields) : undefined,
+    refreshInterval: config.refreshInterval,
   };
 }
 
