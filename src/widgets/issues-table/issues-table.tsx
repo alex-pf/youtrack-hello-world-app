@@ -17,8 +17,10 @@ interface SortState {
 
 /* ---- helpers (reused from issue-line logic) ---- */
 
-function toArray(value: IssueFieldValue | IssueFieldValue[] | null): IssueFieldValue[] {
-  if (!value) return [];
+function toArray(value: IssueFieldValue | IssueFieldValue[] | string | number | null): IssueFieldValue[] {
+  if (value === null || value === undefined) return [];
+  // String/number fields come back as primitives, not objects
+  if (typeof value === 'string' || typeof value === 'number') return [{name: String(value)} as IssueFieldValue];
   return Array.isArray(value) ? value : [value];
 }
 
@@ -43,13 +45,21 @@ function formatTimestamp(ts: number, withTime = false): string {
 
 function getFieldPresentation(field: IssueField): string {
   const valueType = field.projectCustomField?.field?.fieldType?.valueType || '';
-  return toArray(field.value).map(v => {
-    if (valueType.indexOf('date') > -1) {
-      const ts = v as unknown as number;
-      if (typeof ts === 'number' && ts > 0) {
-        return formatTimestamp(ts, valueType.indexOf('time') > -1);
-      }
+  // String/number fields: value is a raw primitive
+  if (valueType === 'string' || valueType === 'integer' || valueType === 'float') {
+    const raw = field.value as unknown;
+    if (raw === null || raw === undefined) return '';
+    return String(raw);
+  }
+  // Date fields: value is a timestamp number
+  if (valueType.indexOf('date') > -1) {
+    const ts = field.value as unknown as number;
+    if (typeof ts === 'number' && ts > 0) {
+      return formatTimestamp(ts, valueType.indexOf('time') > -1);
     }
+    return '';
+  }
+  return toArray(field.value).map(v => {
     return getName(v) || v.presentation || (v.minutes ? `${v.minutes}m` : '') || v.login || '';
   }).filter(Boolean).join(', ');
 }
@@ -90,11 +100,12 @@ function getSortKey(issue: Issue, col: FieldColumnConfig): string | number {
   );
   if (!f) return '';
   const valueType = f.projectCustomField?.field?.fieldType?.valueType || '';
-  // Date fields — sort by timestamp
+  // String/number primitive fields
+  if (valueType === 'string') return (f.value as unknown as string) || '';
+  if (valueType === 'integer' || valueType === 'float') return (f.value as unknown as number) ?? 0;
+  // Date fields — value is a raw timestamp
   if (valueType.indexOf('date') > -1) {
-    const v = toArray(f.value)[0];
-    const ts = v as unknown as number;
-    return typeof ts === 'number' ? ts : 0;
+    return (f.value as unknown as number) ?? 0;
   }
   // Period fields — sort by minutes
   const first = toArray(f.value)[0];
