@@ -64,3 +64,4 @@ The GitHub Actions workflow (`.github/workflows/deploy.yml`) automatically build
 
 - **Staging** — deploys automatically on push to `main`
 - **Production** — deploys after staging succeeds (can be gated with environment protection rules)
+---------
