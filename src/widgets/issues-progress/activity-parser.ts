@@ -51,6 +51,17 @@ export function parseStateSegments(
   statusOrder: StatusOrderItem[],
   issueCreatedAt: number
 ): StatusSegment[] {
+  // ADD: log all activities for the first issue only
+  if (activities.length > 0) {
+    console.log(`[issues-progress] parseStateSegments for ${issueId}:`, {
+      totalActivities: activities.length,
+      categories: [...new Set(activities.map(a => a.category?.id))],
+      fieldNames: [...new Set(activities.map(a => a.field?.name).filter(Boolean))],
+      fieldValueTypes: [...new Set(activities.map(a => a.field?.customField?.fieldType?.valueType).filter(Boolean))],
+      sampleActivity: activities[0],
+    });
+  }
+
   // Filter to state-change activities only
   // YouTrack state changes appear as CustomFieldChanges where field.name === 'State'
   const stateChanges = activities
@@ -337,6 +348,9 @@ export function buildChartData(
   statusOrder: StatusOrderItem[],
   showEstimateDate: boolean
 ): IssueChartData[] {
+  // ADD at the start:
+  console.log(`[issues-progress] buildChartData: ${issues.length} issues, activitiesMap size: ${activitiesMap.size}`);
+
   const chartData: IssueChartData[] = [];
 
   for (const issue of issues) {
@@ -348,5 +362,13 @@ export function buildChartData(
 
   // Sort by totalDays descending (longest issues at top)
   chartData.sort((a, b) => b.totalDays - a.totalDays);
+
+  // ADD after building chartData array:
+  console.log(`[issues-progress] chartData sample:`, chartData.slice(0, 2).map(d => ({
+    id: d.idReadable,
+    segments: d.segments,
+    totalDays: d.totalDays,
+  })));
+
   return chartData;
 }

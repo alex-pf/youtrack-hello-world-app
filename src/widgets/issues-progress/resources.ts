@@ -179,9 +179,10 @@ export async function loadIssueTypes(
     for (const cf of fields) {
       const fieldName = cf.field?.name?.toLowerCase() ?? '';
       const valueType = cf.field?.fieldType?.valueType?.toLowerCase() ?? '';
-      // Look for "Type" field (enum type)
+      // Look for the exact "Type" field (enum type) — use strict equality to avoid
+      // matching unrelated fields like "Subsystem type", "Priority type", etc.
       if (
-        (fieldName === 'type' || fieldName.includes('type')) &&
+        fieldName === 'type' &&
         valueType.includes('enum') &&
         cf.bundle?.values
       ) {
@@ -203,13 +204,15 @@ export async function loadIssueActivities(
   host: EmbeddableWidgetAPI,
   issueId: string
 ): Promise<IssueActivityItem[]> {
-  return host.fetchYouTrack<IssueActivityItem[]>(`issues/${issueId}/activities`, {
+  const result = await host.fetchYouTrack<IssueActivityItem[]>(`issues/${issueId}/activities`, {
     query: {
       fields: ACTIVITY_FIELDS,
       categories: 'CustomFieldChanges,IssueResolvedChanges',
       $top: '1000',
     },
   });
+  console.log(`[issues-progress] activities for ${issueId}:`, result?.length, result?.[0]);
+  return result;
 }
 
 // ─── Batch Activity Loading ──────────────────────────────────────────────────

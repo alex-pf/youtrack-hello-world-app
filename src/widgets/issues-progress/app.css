@@ -45,6 +45,16 @@
   margin: 4px 0;
 }
 
+.ip-note--warning {
+  font-style: normal;
+  color: var(--ring-warning-color, #c47900);
+  background: var(--ring-warning-background-color, #fff8e6);
+  border: 1px solid var(--ring-warning-border-color, #f5c842);
+  border-radius: 4px;
+  padding: 6px 10px;
+  margin: 6px 0;
+}
+
 /* ── Status Sorter ────────────────────────────────────────────────────────── */
 
 .ip-status-sorter {
