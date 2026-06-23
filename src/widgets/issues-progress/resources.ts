@@ -263,3 +263,46 @@ export function extractIssueTypeName(issue: Issue): string | undefined {
   if (Array.isArray(val)) return val[0]?.name;
   return (val as { name?: string } | null)?.name;
 }
+// ─── Orchestrated Data Loading ────────────────────────────────────────────────
+
+/**
+ * Loads all issues matching the search query, then loads their activity histories
+ * in batches. Returns both the raw issues and the activities map.
+ *
+ * This is the main data loading function called by app.tsx.
+ *
+ * @param host - EmbeddableWidgetAPI instance
+ * @param search - YouTrack search query string
+ * @param onProgress - Optional progress callback (loaded, total)
+ * @returns Object with issues array and activitiesMap
+ */
+export async function loadIssuesWithActivities(
+  host: EmbeddableWidgetAPI,
+  search: string,
+  onProgress?: (phase: 'issues' | 'activities', loaded: number, total: number) => void
+): Promise<{ issues: Issue[]; activitiesMap: Map<string, IssueActivityItem[]> }> {
+  // Phase 1: Load all issues (paginated)
+  const allIssues: Issue[] = [];
+  let skip = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const batch = await loadIssues(host, search, skip);
+    allIssues.push(...batch);
+    skip += batch.length;
+    hasMore = batch.length === ISSUES_PACK_SIZE;
+    onProgress?.('issues', allIssues.length, allIssues.length + (hasMore ? 1 : 0));
+  }
+
+  if (allIssues.length === 0) {
+    return { issues: [], activitiesMap: new Map() };
+  }
+
+  // Phase 2: Load activities for all issues in batches
+  const issueIds = allIssues.map((i) => i.id);
+  const activitiesMap = await loadActivitiesBatch(host, issueIds, (loaded, total) => {
+    onProgress?.('activities', loaded, total);
+  });
+
+  return { issues: allIssues, activitiesMap };
+}
