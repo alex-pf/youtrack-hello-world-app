@@ -63,3 +63,151 @@ export function serializeConfig(config: WidgetConfig): StoredWidgetConfig {
     refreshInterval: config.refreshInterval,
   };
 }
+// ─── YouTrack API response types ───────────────────────────────────────────
+
+export interface ProjectInfo {
+  id: string;
+  name: string;
+  shortName: string;
+}
+
+export interface BundleValue {
+  id: string;
+  name: string;
+  color?: { id: string; background: string; foreground: string };
+  ordinal?: number;
+  isResolved?: boolean;
+}
+
+export interface ProjectCustomFieldInfo {
+  id: string;
+  field: {
+    id: string;
+    name: string;
+    fieldType: { id: string; valueType: string };
+  };
+  bundle?: {
+    id: string;
+    values: BundleValue[];
+  };
+}
+
+export interface IssueType {
+  id: string;
+  name: string;
+}
+
+// ─── Activity / History types ───────────────────────────────────────────────
+
+export interface ActivityAuthor {
+  id: string;
+  name: string;
+  login: string;
+}
+
+// A single activity item from GET issues/{id}/activities
+export interface IssueActivityItem {
+  id: string;
+  timestamp: number;           // Unix ms
+  author: ActivityAuthor;
+  category: { id: string };    // e.g. "CustomFieldChanges", "IssueResolvedChanges"
+  field?: {
+    id: string;
+    name: string;
+    customField?: {
+      fieldType?: { id: string; valueType: string };
+    };
+  };
+  added: ActivityValue[] | ActivityValue | null;
+  removed: ActivityValue[] | ActivityValue | null;
+}
+
+export interface ActivityValue {
+  id?: string;
+  name?: string;
+  presentation?: string;
+  // For date fields (Estimated Date), the value is a number (Unix ms timestamp)
+  // but the API returns it as a string in some contexts
+  $type?: string;
+}
+
+// Parsed state change: issue spent `days` in `fromState` before moving to `toState`
+export interface StateChange {
+  issueId: string;
+  fromState: string;           // state name
+  toState: string;             // state name
+  enteredAt: number;           // Unix ms when entered fromState
+  exitedAt: number;            // Unix ms when exited fromState (entered toState)
+  durationMs: number;
+  durationDays: number;
+}
+
+// Parsed estimate date change
+export interface EstimateDateChange {
+  issueId: string;
+  changedAt: number;           // Unix ms
+  changedAtDay: string;        // YYYY-MM-DD (for same-day deduplication)
+  fromDate: number | null;     // Unix ms or null
+  toDate: number | null;       // Unix ms or null
+  author: string;
+}
+
+// Aggregated per-issue data ready for chart rendering
+export interface IssueChartData {
+  issueId: string;             // internal ID
+  idReadable: string;          // e.g. "PROJ-123"
+  summary: string;
+  issueType?: string;          // issue type name (for LT lookup)
+  // Segments in the order defined by statusOrder config
+  segments: StatusSegment[];
+  // Estimate date changes (deduplicated per day)
+  estimateDateChanges: EstimateDateChange[];
+  totalDays: number;           // sum of all segment days
+}
+
+export interface StatusSegment {
+  statusName: string;
+  statusId: string;
+  durationDays: number;
+  color?: string;              // from BundleValue.color.background
+}
+
+// ─── Issue types (for fetching issues list) ─────────────────────────────────
+
+export interface IssueFieldValue {
+  id?: string;
+  name?: string;
+  localizedName?: string;
+  login?: string;
+  avatarUrl?: string;
+  presentation?: string;
+  minutes?: number;
+  color?: { id: string; foreground: string; background: string };
+}
+
+export interface ProjectCustomField {
+  id: string;
+  bundle?: { id: string };
+  field: {
+    id: string;
+    name: string;
+    localizedName?: string;
+    fieldType: { id: string; valueType: string };
+  };
+}
+
+export interface IssueField {
+  id: string;
+  value: IssueFieldValue | IssueFieldValue[] | null;
+  projectCustomField: ProjectCustomField;
+}
+
+export interface Issue {
+  id: string;
+  idReadable: string;
+  summary: string;
+  resolved: number | null;
+  created: number | null;
+  updated: number | null;
+  fields: IssueField[];
+}
