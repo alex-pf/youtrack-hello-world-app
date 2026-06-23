@@ -125,7 +125,8 @@ export default function GanttChart({
 
     svg
       .attr('width', effectiveWidth)
-      .attr('height', totalHeight);
+      .attr('height', totalHeight)
+      .attr('aria-label', `Gantt chart: ${data.length} issues`);
 
     const g = svg
       .append('g')
@@ -394,7 +395,11 @@ export default function GanttChart({
   const useHorizontalScroll = containerWidth < MIN_CHART_WIDTH;
 
   return (
-    <div className="ip-gantt-wrapper" ref={containerRef}>
+    <div
+      className="ip-gantt-wrapper"
+      ref={containerRef}
+      aria-label="Issues Progress chart"
+    >
       {/* Legend */}
       {statusOrder.length > 0 && (
         <div className="ip-gantt-legend">
@@ -415,7 +420,12 @@ export default function GanttChart({
         className="ip-gantt-scroll"
         style={{ overflowX: useHorizontalScroll ? 'auto' : 'hidden' }}
       >
-        <svg ref={svgRef} className="ip-gantt-svg" />
+        <svg
+          ref={svgRef}
+          className="ip-gantt-svg"
+          role="img"
+          aria-label={`Issues Progress Gantt chart showing ${data.length} issues`}
+        />
       </div>
 
       {/* Tooltip */}

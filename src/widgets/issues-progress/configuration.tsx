@@ -279,6 +279,7 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
                         onClick={() => moveStatusUp(idx)}
                         disabled={idx === 0}
                         title="Move up"
+                        aria-label={`Move ${status.name} up`}
                         style={{
                           background: 'none',
                           border: 'none',
@@ -296,6 +297,7 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
                         onClick={() => moveStatusDown(idx)}
                         disabled={idx === statusOrder.length - 1}
                         title="Move down"
+                        aria-label={`Move ${status.name} down`}
                         style={{
                           background: 'none',
                           border: 'none',
@@ -340,6 +342,7 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
                     value={ltSettings[type.name]?.lt50 ?? ''}
                     onChange={e => handleLtChange(type.name, 'lt50', e.target.value)}
                     placeholder="LT 50% (days)"
+                    aria-label={`LT 50% for ${type.name} in days`}
                     className="ip-lt-settings__input"
                   />
                   <input
@@ -348,6 +351,7 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
                     value={ltSettings[type.name]?.lt80 ?? ''}
                     onChange={e => handleLtChange(type.name, 'lt80', e.target.value)}
                     placeholder="LT 80% (days)"
+                    aria-label={`LT 80% for ${type.name} in days`}
                     className="ip-lt-settings__input"
                   />
                 </div>
