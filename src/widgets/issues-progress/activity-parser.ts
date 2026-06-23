@@ -51,15 +51,35 @@ export function parseStateSegments(
   statusOrder: StatusOrderItem[],
   issueCreatedAt: number
 ): StatusSegment[] {
-  // Filter to state-change activities only
-  // YouTrack state changes appear as CustomFieldChanges where field.name === 'State'
+  // Filter to state-change activities only — multi-method, language-independent
   const stateChanges = activities
-    .filter(
-      (a) =>
-        a.field?.name?.toLowerCase() === 'state' ||
-        (a.category?.id === 'CustomFieldChanges' &&
-          a.field?.customField?.fieldType?.valueType?.toLowerCase().includes('state'))
-    )
+    .filter((a) => {
+      // Method 1: Check field type valueType — most reliable, language-independent
+      // YouTrack state fields have valueType like 'state[1]', 'StateBundleElement', etc.
+      const valueType = a.field?.customField?.fieldType?.valueType?.toLowerCase() ?? '';
+      if (valueType.includes('state')) return true;
+
+      // Method 2: Check $type on added/removed values — language-independent
+      // State bundle values have $type like 'StateIssueCustomField', 'StateBundleElement'
+      const addedArr = toActivityValueArray(a.added);
+      const removedArr = toActivityValueArray(a.removed);
+      const allVals = [...addedArr, ...removedArr];
+      if (allVals.some((v) => v.$type?.toLowerCase().includes('state'))) return true;
+
+      // Method 3: Check field name — covers English and common localizations
+      const fieldName = a.field?.name?.toLowerCase() ?? '';
+      if (
+        fieldName === 'state' ||
+        fieldName === 'status' ||
+        fieldName === 'состояние' ||  // Russian
+        fieldName === 'статус' ||      // Russian alternative
+        fieldName === 'estado' ||      // Spanish/Portuguese
+        fieldName === 'zustand' ||     // German
+        fieldName === 'état'           // French
+      ) return true;
+
+      return false;
+    })
     .sort((a, b) => a.timestamp - b.timestamp);
 
   if (stateChanges.length === 0) {
