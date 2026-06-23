@@ -25,3 +25,106 @@
   padding: 16px;
   text-align: center;
 }
+
+/* ── Configuration UI ─────────────────────────────────────────────────────── */
+
+.ip-section-label {
+  font-size: var(--ring-font-size-smaller);
+  color: var(--ring-secondary-color);
+  margin: 8px 0 4px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: block;
+}
+
+.ip-note {
+  font-size: var(--ring-font-size-smaller);
+  color: var(--ring-secondary-color);
+  font-style: italic;
+  margin: 4px 0;
+}
+
+/* ── Status Sorter ────────────────────────────────────────────────────────── */
+
+.ip-status-sorter {
+  margin: 8px 0;
+}
+
+.ip-status-sorter__available {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.ip-status-sorter__ordered {
+  border: 1px solid var(--ring-borders-color);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.ip-status-sorter__item {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  background: var(--ring-content-background-color);
+  border-bottom: 1px solid var(--ring-line-color);
+  gap: 8px;
+}
+
+.ip-status-sorter__item:last-child {
+  border-bottom: none;
+}
+
+.ip-status-sorter__item-name {
+  flex: 1;
+  font-size: var(--ring-font-size);
+  color: var(--ring-text-color);
+}
+
+.ip-status-sorter__color-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ── Lead Time Settings ───────────────────────────────────────────────────── */
+
+.ip-lt-settings {
+  margin: 8px 0;
+}
+
+.ip-lt-settings__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--ring-line-color);
+}
+
+.ip-lt-settings__row:last-child {
+  border-bottom: none;
+}
+
+.ip-lt-settings__type-name {
+  flex: 1;
+  font-size: var(--ring-font-size);
+  color: var(--ring-text-color);
+}
+
+.ip-lt-settings__input {
+  width: 80px;
+  padding: 2px 4px;
+  border: 1px solid var(--ring-borders-color);
+  border-radius: 3px;
+  background: var(--ring-content-background-color);
+  color: var(--ring-text-color);
+  font-size: var(--ring-font-size);
+}
+
+.ip-lt-settings__input:focus {
+  outline: none;
+  border-color: var(--ring-main-color);
+}
