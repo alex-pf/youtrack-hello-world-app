@@ -33,6 +33,16 @@
       "extensionPoint": "DASHBOARD_WIDGET",
       "settingsSchemaPath": "issues-table/widget-settings.json",
       "permissions": ["READ_ISSUE"]
+    },
+    {
+      "key": "issues-progress-widget",
+      "name": "Issues Progress",
+      "description": "Gantt-style lead time tracker showing time spent in each status with configurable LT thresholds",
+      "iconPath": "issues-progress/widget-icon.svg",
+      "indexPath": "issues-progress/index.html",
+      "extensionPoint": "DASHBOARD_WIDGET",
+      "settingsSchemaPath": "issues-progress/widget-settings.json",
+      "permissions": ["READ_ISSUE"]
     }
   ]
 }

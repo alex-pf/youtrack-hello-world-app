@@ -40,7 +40,8 @@ export default defineConfig({
     rollupOptions: {
       input: {
         helloWorld: resolve(__dirname, 'src/widgets/hello-world/index.html'),
-        issuesTable: resolve(__dirname, 'src/widgets/issues-table/index.html')
+        issuesTable: resolve(__dirname, 'src/widgets/issues-table/index.html'),
+        issuesProgress: resolve(__dirname, 'src/widgets/issues-progress/index.html')
       }
     }
   }
