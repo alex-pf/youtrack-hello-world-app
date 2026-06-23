@@ -330,8 +330,14 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
           <div className="ip-lt-settings">
             {selectedProjectIds.length === 0 ? (
               <p className="ip-note">Select projects first to load issue types</p>
-            ) : availableIssueTypes.length === 0 ? (
+            ) : isLoadingStates ? (
               <LoaderInline />
+            ) : availableIssueTypes.length === 0 ? (
+              <p className="ip-note ip-note--warning">
+                No issue types found in the selected project(s).
+                The widget looks for a custom field named <strong>&ldquo;Type&rdquo;</strong> with
+                enum values. Make sure such a field exists and is attached to the project.
+              </p>
             ) : (
               availableIssueTypes.map(type => (
                 <div key={type.id} className="ip-lt-settings__row">
