@@ -1,0 +1,27 @@
+.ip-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 100px;
+}
+
+.ip-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--ring-error-color);
+  padding: 16px;
+  text-align: center;
+}
+
+.ip-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--ring-secondary-color);
+  padding: 16px;
+  text-align: center;
+}
