@@ -129,3 +129,58 @@
   padding: 32px;
   text-align: center;
 }
+/* ─── Sticky x-axis ──────────────────────────────────────────────────────── */
+/* The x-axis stays visible when scrolling vertically */
+.ip-gantt-svg .x-axis {
+  /* x-axis is at the bottom of the SVG — no sticky needed since SVG grows */
+}
+
+/* ─── Row hover highlight ─────────────────────────────────────────────────── */
+.ip-gantt-svg .row-bg {
+  transition: fill 0.1s;
+}
+
+/* ─── Issue ID link hover ─────────────────────────────────────────────────── */
+.ip-gantt-svg foreignObject a:hover {
+  text-decoration: underline !important;
+  color: var(--ring-link-hover-color) !important;
+}
+
+/* ─── LT zone labels ─────────────────────────────────────────────────────── */
+.ip-gantt-svg .lt-zone-label {
+  font-size: 9px;
+  fill: var(--ring-secondary-color);
+  opacity: 0.7;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* ─── Scrollbar styling ───────────────────────────────────────────────────── */
+.ip-gantt-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.ip-gantt-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ip-gantt-scroll::-webkit-scrollbar-thumb {
+  background: var(--ring-borders-color);
+  border-radius: 3px;
+}
+
+.ip-gantt-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--ring-icon-secondary-color);
+}
+
+/* ─── Segment tooltip (native SVG title) ─────────────────────────────────── */
+.ip-gantt-svg .segment {
+  cursor: default;
+}
+
+/* ─── Estimate tick hover ─────────────────────────────────────────────────── */
+.ip-gantt-svg .estimate-tick-target:hover + .estimate-tick {
+  opacity: 1;
+  stroke-width: 3;
+}
