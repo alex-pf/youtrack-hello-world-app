@@ -22,11 +22,15 @@ const ISSUE_FIELDS =
   'fields(id,value(id,name,localizedName,presentation,color(id,foreground,background)),' +
   'projectCustomField(id,field(id,name,localizedName,fieldType(id,valueType))))';
 
-const ACTIVITY_FIELDS =
+const ACTIVITY_ITEM_FIELDS =
   'id,timestamp,author(id,name,login),category(id),' +
   'field(id,name,customField(fieldType(id,valueType))),' +
   'added(id,name,presentation,$type),' +
   'removed(id,name,presentation,$type)';
+
+// The activities endpoint returns ActivityCursorPage, not a direct array.
+// We must wrap the item fields in activities(...) to get the nested array.
+const ACTIVITY_FIELDS = `activities(${ACTIVITY_ITEM_FIELDS})`;
 
 const PROJECT_FIELDS = 'id,name,shortName';
 
@@ -204,15 +208,22 @@ export async function loadIssueActivities(
   host: EmbeddableWidgetAPI,
   issueId: string
 ): Promise<IssueActivityItem[]> {
-  const result = await host.fetchYouTrack<IssueActivityItem[]>(`issues/${issueId}/activities`, {
-    query: {
-      fields: ACTIVITY_FIELDS,
-      categories: 'CustomFieldChanges,IssueResolvedChanges',
-      $top: '1000',
-    },
-  });
-  console.log(`[issues-progress] activities for ${issueId}:`, result?.length, result?.[0]);
-  return result;
+  const page = await host.fetchYouTrack<{ activities?: IssueActivityItem[] }>(
+    `issues/${issueId}/activities`,
+    {
+      query: {
+        fields: ACTIVITY_FIELDS,
+        categories: 'CustomFieldChanges,IssueResolvedChanges',
+        $top: 1000,
+      },
+    }
+  );
+  // The API returns ActivityCursorPage { activities: [...], cursor: "...", hasAfter: bool }
+  // Guard against both the wrapped and unwrapped response shapes
+  if (Array.isArray(page)) {
+    return page as unknown as IssueActivityItem[];
+  }
+  return page?.activities ?? [];
 }
 
 // ─── Batch Activity Loading ──────────────────────────────────────────────────

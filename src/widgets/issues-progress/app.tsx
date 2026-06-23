@@ -110,7 +110,9 @@ export default function App({ host }: Props) {
 
       // Update widget title
       const title = cfg.title || 'Issues Progress';
-      await host.setTitle(`${title} (${count})`, '');
+      // YouTrack returns -1 when count is still calculating
+      const countLabel = count >= 0 ? ` (${count})` : '';
+      await host.setTitle(`${title}${countLabel}`, '');
 
       // Load issues + activities with progress updates
       const { issues, activitiesMap } = await loadIssuesWithActivities(
