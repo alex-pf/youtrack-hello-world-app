@@ -3,9 +3,9 @@ import LoaderInline from '@jetbrains/ring-ui-built/components/loader-inline/load
 import { EmbeddableWidgetAPI } from '../../../@types/globals';
 import Configuration from './configuration';
 import GanttChart from './gantt-chart';
-import { WidgetConfig, IssueChartData, parseStoredConfig } from './types';
+import { WidgetConfig, IssueChartData, IssueActivityItem, Issue, parseStoredConfig } from './types';
 import { loadIssuesWithActivities, loadIssuesCount } from './resources';
-import { buildChartData } from './activity-parser';
+import { buildChartData, parseStateTimeline } from './activity-parser';
 import './app.css';
 
 interface Props {
@@ -23,6 +23,9 @@ export default function App({ host }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [baseUrl, setBaseUrl] = useState('');
   const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Raw data kept for debug mode rendering
+  const [debugIssues, setDebugIssues] = useState<Issue[]>([]);
+  const [debugActivitiesMap, setDebugActivitiesMap] = useState<Map<string, IssueActivityItem[]>>(new Map());
 
   // ─── Configure event bridge ────────────────────────────────────────────────
   useEffect(() => {
@@ -138,6 +141,9 @@ export default function App({ host }: Props) {
       );
 
       setChartData(data);
+      // Persist raw data for debug mode
+      setDebugIssues(issues);
+      setDebugActivitiesMap(activitiesMap);
       setError(null);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -252,6 +258,50 @@ export default function App({ host }: Props) {
         showEstimateDate={config?.showEstimateDate ?? false}
         baseUrl={baseUrl}
       />
+
+      {/* Debug: status transition history */}
+      {config?.debugMode && (
+        <div className="ip-debug">
+          <div className="ip-debug__title">Отладка: история переходов статусов</div>
+          {chartData.map((issue) => {
+            const issueObj = debugIssues.find((i) => i.id === issue.issueId);
+            const activities = debugActivitiesMap.get(issue.issueId) ?? [];
+            const timeline = parseStateTimeline(
+              issue.issueId,
+              activities,
+              issueObj?.created ?? Date.now()
+            );
+            return (
+              <div key={issue.issueId} className="ip-debug__issue">
+                <div className="ip-debug__issue-title">
+                  <strong>{issue.idReadable}</strong>
+                  {': '}
+                  {issue.summary}
+                </div>
+                {timeline.length === 0 ? (
+                  <div className="ip-debug__no-history">Нет данных о переходах</div>
+                ) : (
+                  <ol className="ip-debug__transitions">
+                    {timeline.map((entry, idx) => (
+                      <li key={idx} className="ip-debug__transition">
+                        <span className="ip-debug__date">
+                          {new Date(entry.timestamp).toLocaleDateString('ru-RU', {
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                          })}
+                        </span>
+                        <span className="ip-debug__arrow"> → </span>
+                        <span className="ip-debug__status">{entry.stateName}</span>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

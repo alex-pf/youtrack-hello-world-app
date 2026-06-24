@@ -8,6 +8,21 @@ import {
   StatusOrderItem,
 } from './types';
 
+// ─── State Timeline Entry ─────────────────────────────────────────────────────
+
+/**
+ * A single entry in the raw state transition timeline for an issue.
+ * Represents the moment the issue entered a particular state.
+ */
+export interface StateTimelineEntry {
+  /** Unix ms timestamp when the issue entered this state */
+  timestamp: number;
+  /** Human-readable state name */
+  stateName: string;
+  /** YouTrack state bundle element ID */
+  stateId: string;
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
@@ -204,6 +219,86 @@ export function parseStateSegments(
       color: val.color,
     }));
   }
+}
+
+// ─── Raw State Timeline (for debug view) ─────────────────────────────────────
+
+/**
+ * Returns the raw ordered timeline of state entries for a single issue,
+ * without any aggregation or filtering by statusOrder.
+ *
+ * Each entry represents the moment the issue entered a state.
+ * The first entry uses `issueCreatedAt` as its timestamp (the initial state
+ * before any recorded transition).
+ *
+ * @param issueId - Internal issue ID (unused, kept for API symmetry)
+ * @param activities - Raw activity items from loadIssueActivities()
+ * @param issueCreatedAt - Issue creation timestamp (Unix ms)
+ * @returns Ordered array of StateTimelineEntry, earliest first
+ */
+export function parseStateTimeline(
+  _issueId: string,
+  activities: IssueActivityItem[],
+  issueCreatedAt: number
+): StateTimelineEntry[] {
+  // Filter to state-change activities only (same logic as parseStateSegments)
+  const stateChanges = activities
+    .filter((a) => {
+      const valueType = a.field?.customField?.fieldType?.valueType?.toLowerCase() ?? '';
+      if (valueType.includes('state')) return true;
+
+      const addedArr = toActivityValueArray(a.added);
+      const removedArr = toActivityValueArray(a.removed);
+      const allVals = [...addedArr, ...removedArr];
+      if (allVals.some((v) => v.$type?.toLowerCase().includes('state'))) return true;
+
+      const fieldName = a.field?.name?.toLowerCase() ?? '';
+      if (
+        fieldName === 'state' ||
+        fieldName === 'status' ||
+        fieldName === 'состояние' ||
+        fieldName === 'статус' ||
+        fieldName === 'estado' ||
+        fieldName === 'zustand' ||
+        fieldName === 'état'
+      ) return true;
+
+      return false;
+    })
+    .sort((a, b) => a.timestamp - b.timestamp);
+
+  if (stateChanges.length === 0) return [];
+
+  const timeline: StateTimelineEntry[] = [];
+
+  for (const activity of stateChanges) {
+    const removedVals = toActivityValueArray(activity.removed);
+    const addedVals = toActivityValueArray(activity.added);
+
+    const fromStateName = removedVals[0]?.name ?? removedVals[0]?.presentation ?? '';
+    const toStateName = addedVals[0]?.name ?? addedVals[0]?.presentation ?? '';
+    const toStateId = addedVals[0]?.id ?? '';
+
+    // First transition: record the initial "from" state starting at issue creation
+    if (timeline.length === 0 && fromStateName) {
+      const fromStateId = removedVals[0]?.id ?? '';
+      timeline.push({
+        timestamp: issueCreatedAt,
+        stateName: fromStateName,
+        stateId: fromStateId,
+      });
+    }
+
+    if (toStateName) {
+      timeline.push({
+        timestamp: activity.timestamp,
+        stateName: toStateName,
+        stateId: toStateId,
+      });
+    }
+  }
+
+  return timeline;
 }
 
 // ─── Estimate Date History Parser ─────────────────────────────────────────────

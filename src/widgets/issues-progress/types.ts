@@ -24,6 +24,7 @@ export interface WidgetConfig {
   ltSettings: LtSettings;       // per-type LT thresholds
   showEstimateDate: boolean;
   refreshInterval: number;      // minutes; 0 = no auto-refresh
+  debugMode: boolean;           // show status transition history below chart
 }
 
 // Stored widget config (flat primitives for host.storeConfig)
@@ -36,6 +37,7 @@ export interface StoredWidgetConfig {
   ltSettings?: string;          // JSON-encoded LtSettings
   showEstimateDate?: string;    // 'true' | 'false'
   refreshInterval?: number;
+  debugMode?: string;           // 'true' | 'false'
 }
 
 export function parseStoredConfig(stored: Record<string, string>): WidgetConfig {
@@ -48,6 +50,7 @@ export function parseStoredConfig(stored: Record<string, string>): WidgetConfig 
     ltSettings: stored.ltSettings ? JSON.parse(stored.ltSettings) : {},
     showEstimateDate: stored.showEstimateDate === 'true',
     refreshInterval: stored.refreshInterval ? Number(stored.refreshInterval) : 0,
+    debugMode: stored.debugMode === 'true',
   };
 }
 
@@ -61,6 +64,7 @@ export function serializeConfig(config: WidgetConfig): StoredWidgetConfig {
     ltSettings: JSON.stringify(config.ltSettings),
     showEstimateDate: String(config.showEstimateDate),
     refreshInterval: config.refreshInterval,
+    debugMode: String(config.debugMode),
   };
 }
 // ─── YouTrack API response types ───────────────────────────────────────────

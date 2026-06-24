@@ -38,6 +38,7 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
   const [availableIssueTypes, setAvailableIssueTypes] = useState<IssueType[]>([]);
   const [showEstimateDate, setShowEstimateDate] = useState(config?.showEstimateDate ?? false);
   const [refreshInterval, setRefreshInterval] = useState(config?.refreshInterval ?? 0);
+  const [debugMode, setDebugMode] = useState(config?.debugMode ?? false);
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
   const [isLoadingStates, setIsLoadingStates] = useState(false);
 
@@ -176,6 +177,7 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
       ltSettings,
       showEstimateDate,
       refreshInterval,
+      debugMode,
     };
     await host.storeConfig(serializeConfig(newConfig));
     onSave(newConfig);
@@ -373,6 +375,15 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
           label="Show Estimate Date history"
           checked={showEstimateDate}
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => setShowEstimateDate(e.target.checked)}
+        />
+      </div>
+
+      {/* ── 5b. Debug Mode Toggle ── */}
+      <div style={{marginTop: 8, marginBottom: 8}}>
+        <Checkbox
+          label="Отладка (показать историю переходов статусов)"
+          checked={debugMode}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDebugMode(e.target.checked)}
         />
       </div>
 
