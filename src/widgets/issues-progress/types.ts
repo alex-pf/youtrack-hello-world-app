@@ -126,6 +126,13 @@ export interface IssueActivityItem {
   removed: ActivityValue[] | ActivityValue | null;
 }
 
+// Wrapper returned by GET issues/{id}/activitiesPage (cursor-based pagination)
+export interface ActivityPage {
+  activities?: IssueActivityItem[];
+  cursor?: string;
+  hasAfter?: boolean;
+}
+
 export interface ActivityValue {
   id?: string;
   name?: string;

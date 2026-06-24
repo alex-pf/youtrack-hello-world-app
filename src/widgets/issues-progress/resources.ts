@@ -2,6 +2,7 @@ import type { EmbeddableWidgetAPI } from '../../../@types/globals';
 import type {
   Issue,
   IssueActivityItem,
+  ActivityPage,
   ProjectInfo,
   ProjectCustomFieldInfo,
   IssueType,
@@ -28,9 +29,9 @@ const ACTIVITY_ITEM_FIELDS =
   'added(id,name,presentation,$type),' +
   'removed(id,name,presentation,$type)';
 
-// The activities endpoint returns ActivityCursorPage, not a direct array.
-// We must wrap the item fields in activities(...) to get the nested array.
-const ACTIVITY_FIELDS = `activities(${ACTIVITY_ITEM_FIELDS})`;
+// The activitiesPage endpoint returns ActivityCursorPage { activities, cursor, hasAfter }.
+// We must wrap the item fields in activities(...) and also request cursor and hasAfter.
+const ACTIVITY_FIELDS = `activities(${ACTIVITY_ITEM_FIELDS}),cursor,hasAfter`;
 
 const PROJECT_FIELDS = 'id,name,shortName';
 
@@ -208,8 +209,8 @@ export async function loadIssueActivities(
   host: EmbeddableWidgetAPI,
   issueId: string
 ): Promise<IssueActivityItem[]> {
-  const page = await host.fetchYouTrack<{ activities?: IssueActivityItem[] }>(
-    `issues/${issueId}/activities`,
+  const page = await host.fetchYouTrack<ActivityPage>(
+    `issues/${issueId}/activitiesPage`,
     {
       query: {
         fields: ACTIVITY_FIELDS,
@@ -218,11 +219,6 @@ export async function loadIssueActivities(
       },
     }
   );
-  // The API returns ActivityCursorPage { activities: [...], cursor: "...", hasAfter: bool }
-  // Guard against both the wrapped and unwrapped response shapes
-  if (Array.isArray(page)) {
-    return page as unknown as IssueActivityItem[];
-  }
   return page?.activities ?? [];
 }
 
