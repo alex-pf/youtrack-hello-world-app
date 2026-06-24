@@ -26,8 +26,8 @@ const ISSUE_FIELDS =
 const ACTIVITY_ITEM_FIELDS =
   'id,timestamp,author(id,name,login),category(id),' +
   'field(id,name),' +
-  'added(id,name,presentation),' +
-  'removed(id,name,presentation)';
+  'added,' +
+  'removed';
 
 // The activitiesPage endpoint returns ActivityCursorPage { activities, cursor, hasAfter }.
 // We must wrap the item fields in activities(...) and also request cursor and hasAfter.
