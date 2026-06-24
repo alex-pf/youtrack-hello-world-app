@@ -35,8 +35,9 @@ function toDateString(timestampMs: number): string {
   return new Date(timestampMs).toISOString().slice(0, 10); // YYYY-MM-DD
 }
 
-function toActivityValueArray(val: ActivityValue[] | ActivityValue | null): ActivityValue[] {
-  if (!val) return [];
+function toActivityValueArray(val: number | ActivityValue[] | ActivityValue | null): ActivityValue[] {
+  if (val === null || val === undefined) return [];
+  if (typeof val === 'number') return [];
   if (Array.isArray(val)) return val;
   return [val];
 }
@@ -342,15 +343,15 @@ export function parseEstimateDateChanges(
   // Convert to EstimateDateChange objects
   const result: EstimateDateChange[] = [];
   for (const [day, activity] of byDay.entries()) {
-    const removedVals = toActivityValueArray(activity.removed);
-    const addedVals = toActivityValueArray(activity.added);
-
-    // Date field values come as numbers (Unix ms) or null
-    const parseDate = (vals: ActivityValue[]): number | null => {
+    // Date field values come as raw numbers (Unix ms) or null when no sub-field selectors are used.
+    // Handle the number case directly before falling back to ActivityValue parsing.
+    const parseDate = (raw: number | ActivityValue[] | ActivityValue | null): number | null => {
+      if (raw === null || raw === undefined) return null;
+      if (typeof raw === 'number') return raw;  // raw Unix-ms timestamp
+      const vals = toActivityValueArray(raw);
       if (vals.length === 0) return null;
       const val = vals[0];
       // The value might be in `presentation` (formatted date string) or as a raw number
-      // Try to parse as number first, then as date string
       if (typeof (val as unknown as { value: number }).value === 'number') {
         return (val as unknown as { value: number }).value;
       }
@@ -365,8 +366,8 @@ export function parseEstimateDateChanges(
       issueId,
       changedAt: activity.timestamp,
       changedAtDay: day,
-      fromDate: parseDate(removedVals),
-      toDate: parseDate(addedVals),
+      fromDate: parseDate(activity.removed),
+      toDate: parseDate(activity.added),
       author: activity.author?.name ?? activity.author?.login ?? 'Unknown',
     });
   }
