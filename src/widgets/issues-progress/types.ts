@@ -118,9 +118,6 @@ export interface IssueActivityItem {
   field?: {
     id: string;
     name: string;
-    customField?: {
-      fieldType?: { id: string; valueType: string };
-    };
   };
   added: ActivityValue[] | ActivityValue | null;
   removed: ActivityValue[] | ActivityValue | null;

@@ -69,10 +69,8 @@ export function parseStateSegments(
   // Filter to state-change activities only — multi-method, language-independent
   const stateChanges = activities
     .filter((a) => {
-      // Method 1: Check field type valueType — most reliable, language-independent
-      // YouTrack state fields have valueType like 'state[1]', 'StateBundleElement', etc.
-      const valueType = a.field?.customField?.fieldType?.valueType?.toLowerCase() ?? '';
-      if (valueType.includes('state')) return true;
+      // Method 1 (customField removed from API — field is FilterField, not CustomField):
+      // Fall through to Method 2 and Method 3 below.
 
       // Method 2: Check $type on added/removed values — language-independent
       // State bundle values have $type like 'StateIssueCustomField', 'StateBundleElement'
@@ -244,9 +242,7 @@ export function parseStateTimeline(
   // Filter to state-change activities only (same logic as parseStateSegments)
   const stateChanges = activities
     .filter((a) => {
-      const valueType = a.field?.customField?.fieldType?.valueType?.toLowerCase() ?? '';
-      if (valueType.includes('state')) return true;
-
+      // customField removed from API (field is FilterField) — use Method 2 and Method 3.
       const addedArr = toActivityValueArray(a.added);
       const removedArr = toActivityValueArray(a.removed);
       const allVals = [...addedArr, ...removedArr];
@@ -328,9 +324,8 @@ export function parseEstimateDateChanges(
       return (
         fieldName.includes('estimated') ||
         fieldName.includes('due date') ||
-        fieldName.includes('deadline') ||
-        // Also match by field type: date fields
-        a.field?.customField?.fieldType?.valueType?.toLowerCase() === 'date'
+        fieldName.includes('deadline')
+        // Note: customField no longer available (field is FilterField) — match by name only
       );
     })
     .sort((a, b) => a.timestamp - b.timestamp);

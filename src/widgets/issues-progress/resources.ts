@@ -25,9 +25,9 @@ const ISSUE_FIELDS =
 
 const ACTIVITY_ITEM_FIELDS =
   'id,timestamp,author(id,name,login),category(id),' +
-  'field(id,name,customField(fieldType(id,valueType))),' +
-  'added(id,name,presentation,$type),' +
-  'removed(id,name,presentation,$type)';
+  'field(id,name),' +
+  'added(id,name,presentation),' +
+  'removed(id,name,presentation)';
 
 // The activitiesPage endpoint returns ActivityCursorPage { activities, cursor, hasAfter }.
 // We must wrap the item fields in activities(...) and also request cursor and hasAfter.
@@ -214,11 +214,12 @@ export async function loadIssueActivities(
     {
       query: {
         fields: ACTIVITY_FIELDS,
-        categories: 'CustomFieldChanges,IssueResolvedChanges',
+        categories: 'CustomFieldCategory,IssueResolvedCategory',
         $top: 1000,
       },
     }
   );
+  console.log('[DEBUG] activitiesPage raw response:', JSON.stringify(page, null, 2));
   return page?.activities ?? [];
 }
 
