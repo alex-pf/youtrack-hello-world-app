@@ -134,9 +134,8 @@ export interface ActivityValue {
   id?: string;
   name?: string;
   presentation?: string;
-  // For date fields (Estimated Date), the value is a number (Unix ms timestamp)
-  // but the API returns it as a string in some contexts
   $type?: string;
+  value?: number;   // Unix ms timestamp for DateIssueCustomField
 }
 
 // Parsed state change: issue spent `days` in `fromState` before moving to `toState`
