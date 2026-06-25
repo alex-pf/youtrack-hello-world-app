@@ -27,11 +27,6 @@ const STATUS_COLORS = [
   '#00BCD4', '#8BC34A', '#FF5722', '#607D8B', '#E91E63',
 ];
 
-// ─── LT zone colors ───────────────────────────────────────────────────────────
-const LT_GREEN = 'rgba(76, 175, 80, 0.08)';
-const LT_YELLOW = 'rgba(255, 193, 7, 0.12)';
-const LT_RED = 'rgba(244, 67, 54, 0.10)';
-
 export default function GanttChart({
   data,
   statusOrder,
@@ -142,64 +137,6 @@ export default function GanttChart({
       .domain(data.map((d) => d.issueId))
       .range([0, chartHeight])
       .padding(0);
-
-    // ─── LT background zones ─────────────────────────────────────────────────
-    if (ltEnabled) {
-      let globalLt50: number | undefined;
-      let globalLt80: number | undefined;
-
-      for (const issueData of data) {
-        const typeName = issueData.issueType ?? '';
-        const lt = ltSettings[typeName] ?? ltSettings[''] ?? ltSettings[Object.keys(ltSettings)[0]];
-        if (lt) {
-          if (lt.lt50 !== undefined) {
-            globalLt50 = globalLt50 === undefined ? lt.lt50 : Math.min(globalLt50, lt.lt50);
-          }
-          if (lt.lt80 !== undefined) {
-            globalLt80 = globalLt80 === undefined ? lt.lt80 : Math.min(globalLt80, lt.lt80);
-          }
-        }
-      }
-
-      const ltZones = g.append('g').attr('class', 'lt-zones');
-
-      if (globalLt50 !== undefined && globalLt80 !== undefined) {
-        ltZones.append('rect')
-          .attr('x', xScale(0))
-          .attr('y', 0)
-          .attr('width', xScale(globalLt50))
-          .attr('height', chartHeight)
-          .attr('fill', LT_GREEN);
-
-        ltZones.append('rect')
-          .attr('x', xScale(globalLt50))
-          .attr('y', 0)
-          .attr('width', xScale(globalLt80) - xScale(globalLt50))
-          .attr('height', chartHeight)
-          .attr('fill', LT_YELLOW);
-
-        ltZones.append('rect')
-          .attr('x', xScale(globalLt80))
-          .attr('y', 0)
-          .attr('width', chartWidth - xScale(globalLt80))
-          .attr('height', chartHeight)
-          .attr('fill', LT_RED);
-      } else if (globalLt80 !== undefined) {
-        ltZones.append('rect')
-          .attr('x', xScale(0))
-          .attr('y', 0)
-          .attr('width', xScale(globalLt80))
-          .attr('height', chartHeight)
-          .attr('fill', LT_GREEN);
-
-        ltZones.append('rect')
-          .attr('x', xScale(globalLt80))
-          .attr('y', 0)
-          .attr('width', chartWidth - xScale(globalLt80))
-          .attr('height', chartHeight)
-          .attr('fill', LT_RED);
-      }
-    }
 
     // ─── Grid lines ──────────────────────────────────────────────────────────
     const tickCount = Math.min(10, Math.floor(chartWidth / 60));
