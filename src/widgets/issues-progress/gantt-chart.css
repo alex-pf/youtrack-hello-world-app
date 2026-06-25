@@ -184,3 +184,20 @@
   opacity: 1;
   stroke-width: 3;
 }
+
+/* ─── LT threshold tick markers ──────────────────────────────────────────── */
+.ip-gantt-svg .lt-threshold-tick {
+  pointer-events: none;
+}
+
+.ip-gantt-svg .lt-threshold-tick-lt50 {
+  stroke: #FFA500;
+}
+
+.ip-gantt-svg .lt-threshold-tick-lt80 {
+  stroke: #FF0000;
+}
+
+.ip-gantt-svg .lt-threshold-tick-target {
+  cursor: pointer;
+}

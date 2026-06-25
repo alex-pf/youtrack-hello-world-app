@@ -350,6 +350,90 @@ export default function GanttChart({
       });
     }
 
+    // ─── LT threshold markers (per-row vertical lines for LT50% and LT80%) ───
+    if (ltEnabled) {
+      const showLtTooltip = (
+        event: MouseEvent,
+        issueType: string | undefined,
+        label: string,
+        days: number
+      ) => {
+        if (!tooltipEl) return;
+        const weeksStr = days > 28 ? ` (${Math.round(days / 7)} weeks)` : '';
+        tooltipEl.innerHTML = `
+          <div class="ip-gantt-tooltip__header">${label} Threshold</div>
+          ${issueType ? `<div class="ip-gantt-tooltip__row">
+            <span class="ip-gantt-tooltip__label">Type:</span>
+            <span>${issueType}</span>
+          </div>` : ''}
+          <div class="ip-gantt-tooltip__row">
+            <span class="ip-gantt-tooltip__label">${label}:</span>
+            <span>${days} days${weeksStr}</span>
+          </div>
+        `;
+        tooltipEl.style.display = 'block';
+        moveTooltip(event);
+      };
+
+      rows.each(function (issueData) {
+        const typeName = issueData.issueType ?? '';
+        const lt =
+          ltSettings[typeName] ??
+          ltSettings[''] ??
+          ltSettings[Object.keys(ltSettings)[0]];
+        if (!lt) return;
+
+        const rowG = d3.select(this);
+
+        const renderLtMarker = (
+          days: number,
+          color: string,
+          cssClass: string,
+          label: string
+        ) => {
+          const tickX = xScale(days);
+          const capturedDays = days;
+          const capturedLabel = label;
+          const capturedType = issueData.issueType;
+
+          rowG.append('line')
+            .attr('class', `lt-threshold-tick ${cssClass}`)
+            .attr('x1', tickX)
+            .attr('x2', tickX)
+            .attr('y1', ROW_PADDING)
+            .attr('y2', ROW_PADDING + TICK_HEIGHT)
+            .attr('stroke', color)
+            .attr('stroke-width', TICK_WIDTH)
+            .attr('opacity', 0.9);
+
+          rowG.append('rect')
+            .attr('class', 'lt-threshold-tick-target')
+            .attr('x', tickX - 6)
+            .attr('y', ROW_PADDING)
+            .attr('width', 12)
+            .attr('height', TICK_HEIGHT)
+            .attr('fill', 'transparent')
+            .attr('cursor', 'pointer')
+            .on('mouseover', function (event: MouseEvent) {
+              showLtTooltip(event, capturedType, capturedLabel, capturedDays);
+            })
+            .on('mousemove', function (event: MouseEvent) {
+              moveTooltip(event);
+            })
+            .on('mouseout', function () {
+              hideTooltip();
+            });
+        };
+
+        if (lt.lt50 !== undefined) {
+          renderLtMarker(lt.lt50, '#FFA500', 'lt-threshold-tick-lt50', 'LT50%');
+        }
+        if (lt.lt80 !== undefined) {
+          renderLtMarker(lt.lt80, '#FF0000', 'lt-threshold-tick-lt80', 'LT80%');
+        }
+      });
+    }
+
     // ─── Y axis (issue IDs as clickable links via foreignObject) ─────────────
     const yAxisG = g.append('g').attr('class', 'y-axis');
 
