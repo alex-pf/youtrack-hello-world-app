@@ -119,8 +119,8 @@ export interface IssueActivityItem {
     id: string;
     name: string;
   };
-  added: number | ActivityValue[] | ActivityValue | null;
-  removed: number | ActivityValue[] | ActivityValue | null;
+  added: ActivityValue[] | ActivityValue | null;
+  removed: ActivityValue[] | ActivityValue | null;
 }
 
 // Wrapper returned by GET issues/{id}/activitiesPage (cursor-based pagination)
