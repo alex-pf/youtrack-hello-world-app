@@ -351,8 +351,9 @@ export function parseEstimateDateChanges(
       const val = vals[0];
       // The value might be in `presentation` (formatted date string) or as a raw number
       // Try to parse as number first, then as date string
-      if (typeof (val as unknown as { value: number }).value === 'number') {
-        return (val as unknown as { value: number }).value;
+      if (val.id) {
+        const ts = Number(val.id);
+        if (!isNaN(ts) && ts > 0) return ts;
       }
       if (val.presentation) {
         const parsed = Date.parse(val.presentation);
