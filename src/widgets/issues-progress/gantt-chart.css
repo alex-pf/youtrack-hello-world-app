@@ -43,6 +43,7 @@
   overflow-y: auto;
   overflow-x: hidden;
   position: relative;
+  max-height: calc(100vh - 200px);
 }
 
 /* ─── SVG ─────────────────────────────────────────────────────────────────── */
