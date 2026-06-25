@@ -229,6 +229,16 @@ export default function App({ host }: Props) {
     );
   }
 
+  const sortedData = [...chartData].sort((a, b) => {
+    const aDate = a.estimateDateChanges.length > 0
+      ? Math.max(...a.estimateDateChanges.map(c => c.changedAt))
+      : Infinity;
+    const bDate = b.estimateDateChanges.length > 0
+      ? Math.max(...b.estimateDateChanges.map(c => c.changedAt))
+      : Infinity;
+    return aDate - bDate;
+  });
+
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', display: 'flex', flexDirection: 'column' }}>
       {/* Refresh indicator */}
@@ -251,7 +261,7 @@ export default function App({ host }: Props) {
 
       {/* Gantt chart */}
       <GanttChart
-        data={chartData}
+        data={sortedData}
         statusOrder={config?.statusOrder ?? []}
         ltEnabled={config?.ltEnabled ?? false}
         ltSettings={config?.ltSettings ?? {}}
