@@ -349,12 +349,14 @@ export function parseEstimateDateChanges(
     const parseDate = (vals: ActivityValue[]): number | null => {
       if (vals.length === 0) return null;
       const val = vals[0];
-      // The value might be in `presentation` (formatted date string) or as a raw number
-      // Try to parse as number first, then as date string
+      // PRIMARY: raw Unix ms timestamp from DateIssueCustomField.value
+      if (typeof val.value === 'number' && val.value > 0) return val.value;
+      // FALLBACK: val.id as numeric timestamp (safety net)
       if (val.id) {
         const ts = Number(val.id);
         if (!isNaN(ts) && ts > 0) return ts;
       }
+      // FALLBACK: presentation string (locale-dependent, may fail)
       if (val.presentation) {
         const parsed = Date.parse(val.presentation);
         return isNaN(parsed) ? null : parsed;
