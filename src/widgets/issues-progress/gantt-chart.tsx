@@ -254,13 +254,18 @@ export default function GanttChart({
             .attr('stroke-width', TICK_WIDTH)
             .attr('opacity', 0.8);
 
+          const isLast = idx === issueData.estimateDateChanges.length - 1;
+          const labelText = isLast && change.toDate
+            ? new Date(change.toDate).toLocaleDateString(undefined, { day: '2-digit', month: '2-digit', year: '2-digit' })
+            : String(idx + 1);
+
           rowG.append('text')
             .attr('class', 'estimate-tick-label')
             .attr('x', tickX + 3)
             .attr('y', ROW_PADDING + 10)
             .attr('font-size', '9px')
             .attr('fill', 'var(--ring-text-color)')
-            .text(idx + 1);
+            .text(labelText);
 
           // Capture change and idx for closure
           const capturedChange = change;
