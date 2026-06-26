@@ -135,7 +135,7 @@ export interface ActivityValue {
   name?: string;
   presentation?: string;
   $type?: string;
-  value?: number;   // Unix ms timestamp for DateIssueCustomField
+  value?: number | string;   // Unix ms timestamp for DateIssueCustomField (API may return as string)
 }
 
 // Parsed state change: issue spent `days` in `fromState` before moving to `toState`

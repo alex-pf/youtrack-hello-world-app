@@ -345,22 +345,29 @@ export function parseEstimateDateChanges(
     const removedVals = toActivityValueArray(activity.removed);
     const addedVals = toActivityValueArray(activity.added);
 
-    // Date field values come as numbers (Unix ms) or null
+    // Date field values come as numbers or strings (Unix ms) or null
     const parseDate = (vals: ActivityValue[]): number | null => {
       if (vals.length === 0) return null;
       const val = vals[0];
-      // PRIMARY: raw Unix ms timestamp from DateIssueCustomField.value
-      if (typeof val.value === 'number' && val.value > 0) return val.value;
-      // FALLBACK: val.id as numeric timestamp (safety net)
+
+      // PRIMARY: accept both number and string representation of Unix ms timestamp
+      if (val.value !== undefined && val.value !== null) {
+        const ts = Number(val.value);
+        if (!isNaN(ts) && ts > 0) return ts;
+      }
+
+      // FALLBACK 1: val.id as numeric timestamp (safety net)
       if (val.id) {
         const ts = Number(val.id);
         if (!isNaN(ts) && ts > 0) return ts;
       }
-      // FALLBACK: presentation string (locale-dependent, may fail)
+
+      // FALLBACK 2: presentation string (last resort)
       if (val.presentation) {
         const parsed = Date.parse(val.presentation);
         return isNaN(parsed) ? null : parsed;
       }
+
       return null;
     };
 

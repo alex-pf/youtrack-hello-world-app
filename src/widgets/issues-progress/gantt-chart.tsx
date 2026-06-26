@@ -255,8 +255,9 @@ export default function GanttChart({
             .attr('opacity', 0.8);
 
           const isLast = idx === issueData.estimateDateChanges.length - 1;
-          const labelText = isLast && change.toDate
-            ? new Date(change.toDate).toLocaleDateString(undefined, { day: '2-digit', month: '2-digit', year: '2-digit' })
+          const dateToShow = change.toDate ?? change.fromDate;
+          const labelText = isLast && dateToShow !== null
+            ? new Date(dateToShow).toLocaleDateString(undefined, { day: '2-digit', month: '2-digit', year: '2-digit' })
             : String(idx + 1);
 
           rowG.append('text')
