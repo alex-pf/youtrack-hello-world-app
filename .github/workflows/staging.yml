@@ -45,8 +45,32 @@ jobs:
 
       - run: npm install -g @jetbrains/youtrack-apps-tools
 
+      - name: Validate YouTrack connectivity
+        env:
+          YOUTRACK_HOST: ${{ secrets.YOUTRACK_STAGING_HOST }}
+        run: |
+          if [ -z "$YOUTRACK_HOST" ]; then
+            echo "❌ ERROR: YOUTRACK_HOST secret is empty or not set in this GitHub Environment"
+            exit 1
+          fi
+          # Normalize host: strip trailing slash
+          HOST=$(echo "$YOUTRACK_HOST" | sed 's|/$||')
+          # Ensure https:// prefix
+          if [[ "$HOST" != https://* ]]; then
+            HOST="https://$HOST"
+          fi
+          echo "✅ Testing connectivity to: $HOST"
+          curl --fail --silent --max-time 15 \
+            -o /dev/null -w "HTTP status: %{http_code}\n" \
+            "$HOST/api/admin/apps" \
+            || echo "⚠️  Connectivity check failed (may be auth-required, check HTTP status above)"
+
       - name: Upload to YouTrack (Staging)
         env:
           YOUTRACK_HOST: ${{ secrets.YOUTRACK_STAGING_HOST }}
           YOUTRACK_API_TOKEN: ${{ secrets.YOUTRACK_STAGING_TOKEN }}
-        run: youtrack-app upload dist
+          NODE_OPTIONS: '--enable-source-maps'
+        run: |
+          # Normalize YOUTRACK_HOST: strip trailing slash
+          export YOUTRACK_HOST=$(echo "$YOUTRACK_HOST" | sed 's|/$||')
+          youtrack-app upload dist
