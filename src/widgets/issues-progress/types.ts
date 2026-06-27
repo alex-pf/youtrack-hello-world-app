@@ -26,6 +26,7 @@ export interface WidgetConfig {
   showProjectedLT: boolean;
   refreshInterval: number;      // minutes; 0 = no auto-refresh
   debugMode: boolean;           // show status transition history below chart
+  description?: string;         // markdown text shown below chart
 }
 
 // Stored widget config (flat primitives for host.storeConfig)
@@ -40,6 +41,7 @@ export interface StoredWidgetConfig {
   showProjectedLT?: string;
   refreshInterval?: number;
   debugMode?: string;           // 'true' | 'false'
+  description?: string;
 }
 
 export function parseStoredConfig(stored: Record<string, string>): WidgetConfig {
@@ -54,6 +56,7 @@ export function parseStoredConfig(stored: Record<string, string>): WidgetConfig 
     showProjectedLT: stored.showProjectedLT !== 'false',
     refreshInterval: stored.refreshInterval ? Number(stored.refreshInterval) : 0,
     debugMode: stored.debugMode === 'true',
+    description: stored.description ?? '',
   };
 }
 
@@ -69,6 +72,7 @@ export function serializeConfig(config: WidgetConfig): StoredWidgetConfig {
     showProjectedLT: String(config.showProjectedLT),
     refreshInterval: config.refreshInterval,
     debugMode: String(config.debugMode),
+    description: config.description ?? '',
   };
 }
 // ─── YouTrack API response types ───────────────────────────────────────────

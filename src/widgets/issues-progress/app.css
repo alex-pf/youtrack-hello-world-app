@@ -227,6 +227,46 @@
   border-top: 1px solid var(--ring-line-color);
   margin: 12px 0;
 }
+/* ─── Markdown Description ───────────────────────────────────────────────── */
+
+.ip-description {
+  padding: 12px 16px;
+  border-top: 1px solid var(--ring-line-color);
+  font-size: var(--ring-font-size);
+  color: var(--ring-text-color);
+  line-height: 1.6;
+}
+
+.ip-description h1,
+.ip-description h2,
+.ip-description h3 {
+  margin: 0.6em 0 0.3em;
+  color: var(--ring-text-color);
+  font-weight: 600;
+}
+
+.ip-description p {
+  margin: 0.4em 0;
+}
+
+.ip-description ul,
+.ip-description ol {
+  padding-left: 1.4em;
+  margin: 0.4em 0;
+}
+
+.ip-description code {
+  font-family: var(--ring-font-family-monospace, monospace);
+  background: var(--ring-hover-background-color);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+
+.ip-description a {
+  color: var(--ring-link-color);
+}
+
 /* ─── Debug Panel ─────────────────────────────────────────────────────────── */
 
 .ip-debug {

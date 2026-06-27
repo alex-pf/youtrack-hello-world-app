@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import LoaderInline from '@jetbrains/ring-ui-built/components/loader-inline/loader-inline';
+import { marked } from 'marked';
 import { EmbeddableWidgetAPI } from '../../../@types/globals';
 import Configuration from './configuration';
 import GanttChart from './gantt-chart';
@@ -240,36 +241,72 @@ export default function App({ host }: Props) {
     return aDate - bDate;
   });
 
-  return (
-    <div style={{ width: '100%', height: '100%', position: 'relative', display: 'flex', flexDirection: 'column' }}>
-      {/* Refresh indicator */}
-      {isRefreshing && (
-        <div style={{
-          position: 'absolute',
-          top: 4,
-          right: 8,
-          zIndex: 10,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 4,
-          fontSize: 'var(--ring-font-size-smaller)',
-          color: 'var(--ring-secondary-color)',
-        }}>
-          <LoaderInline />
-          <span>Refreshing...</span>
-        </div>
-      )}
+  const descriptionHtml = config?.description
+    ? (marked(config.description) as string)
+    : '';
 
-      {/* Gantt chart */}
-      <GanttChart
-        data={sortedData}
-        statusOrder={config?.statusOrder ?? []}
-        ltEnabled={config?.ltEnabled ?? false}
-        ltSettings={config?.ltSettings ?? {}}
-        showEstimateDate={config?.showEstimateDate ?? false}
-        showProjectedLT={config?.showProjectedLT ?? false}
-        baseUrl={baseUrl}
-      />
+  return (
+    <div style={{ width: '100%', height: '100%', position: 'relative', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {/* Toolbar */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'flex-end',
+        alignItems: 'center',
+        padding: '2px 8px',
+        gap: 8,
+        flexShrink: 0,
+      }}>
+        {isRefreshing && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            fontSize: 'var(--ring-font-size-smaller)',
+            color: 'var(--ring-secondary-color)',
+          }}>
+            <LoaderInline />
+            <span>Refreshing...</span>
+          </div>
+        )}
+        <button
+          onClick={() => config && fetchData(config, true)}
+          disabled={isRefreshing}
+          style={{
+            background: 'none',
+            border: '1px solid var(--ring-borders-color)',
+            borderRadius: 4,
+            padding: '2px 10px',
+            cursor: isRefreshing ? 'default' : 'pointer',
+            fontSize: 'var(--ring-font-size-smaller)',
+            color: 'var(--ring-text-color)',
+            opacity: isRefreshing ? 0.5 : 1,
+          }}
+        >
+          Обновить
+        </button>
+      </div>
+
+      {/* Scrollable content area */}
+      <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+        {/* Gantt chart */}
+        <GanttChart
+          data={sortedData}
+          statusOrder={config?.statusOrder ?? []}
+          ltEnabled={config?.ltEnabled ?? false}
+          ltSettings={config?.ltSettings ?? {}}
+          showEstimateDate={config?.showEstimateDate ?? false}
+          showProjectedLT={config?.showProjectedLT ?? false}
+          baseUrl={baseUrl}
+        />
+
+        {/* Markdown description */}
+        {descriptionHtml && (
+          <div
+            className="ip-description"
+            dangerouslySetInnerHTML={{__html: descriptionHtml}}
+          />
+        )}
+      </div>
 
       {/* Debug: status transition history */}
       {config?.debugMode && (
