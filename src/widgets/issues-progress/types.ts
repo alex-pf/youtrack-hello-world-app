@@ -180,6 +180,7 @@ export interface IssueChartData {
   totalDays: number;           // sum of all segment days
   projectedLeadTimeDays?: number;
   projectedLTDate?: number;
+  createdAt?: number;          // issue creation timestamp (Unix ms)
 }
 
 export interface StatusSegment {

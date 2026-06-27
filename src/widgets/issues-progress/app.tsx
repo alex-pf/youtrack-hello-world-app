@@ -315,7 +315,6 @@ export default function App({ host }: Props) {
             const issueObj = debugIssues.find((i) => i.id === issue.issueId);
             const activities = debugActivitiesMap.get(issue.issueId) ?? [];
             const timeline = parseStateTimeline(
-              issue.issueId,
               activities,
               issueObj?.created ?? Date.now()
             );
