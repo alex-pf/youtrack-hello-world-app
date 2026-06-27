@@ -16,6 +16,10 @@ export const ISSUES_PACK_SIZE = 50;
 // Delay between batched activity requests to avoid rate-limiting (ms)
 const ACTIVITY_BATCH_DELAY_MS = 100;
 
+const ACTIVITY_CATEGORIES = 'CustomFieldCategory,IssueResolvedCategory';
+const ACTIVITIES_PAGE_SIZE = 1000;
+const MAX_PROJECTS = 200;
+
 // ─── Field selector strings ──────────────────────────────────────────────────
 
 const ISSUE_FIELDS =
@@ -124,30 +128,41 @@ export async function loadProjects(host: EmbeddableWidgetAPI): Promise<ProjectIn
   return host.fetchYouTrack<ProjectInfo[]>('admin/projects', {
     query: {
       fields: PROJECT_FIELDS,
-      $top: '200',
+      $top: String(MAX_PROJECTS),
     },
   });
 }
 
-// ─── Project States ──────────────────────────────────────────────────────────
+// ─── Project Custom Fields (states + types) ──────────────────────────────────
 
-export async function loadProjectStates(
+/**
+ * Loads states and issue types for the given projects in parallel (one request
+ * per project instead of 2N sequential requests).
+ */
+export async function loadProjectCustomFields(
   host: EmbeddableWidgetAPI,
   projectIds: string[]
-): Promise<StatusOrderItem[]> {
+): Promise<{ states: StatusOrderItem[]; types: IssueType[] }> {
   const allStates: Map<string, StatusOrderItem> = new Map();
+  const allTypes: Map<string, IssueType> = new Map();
 
-  for (const projectId of projectIds) {
-    const fields = await host.fetchYouTrack<ProjectCustomFieldInfo[]>(
-      `admin/projects/${projectId}/customFields`,
-      {
-        query: { fields: PROJECT_CUSTOM_FIELD_FIELDS },
-      }
-    );
+  const perProjectFields = await Promise.all(
+    projectIds.map((projectId) =>
+      host.fetchYouTrack<ProjectCustomFieldInfo[]>(
+        `admin/projects/${projectId}/customFields`,
+        {
+          query: { fields: PROJECT_CUSTOM_FIELD_FIELDS },
+        }
+      )
+    )
+  );
 
+  for (const fields of perProjectFields) {
     for (const cf of fields) {
-      // Look for State-type fields (valueType contains 'state' case-insensitive)
       const valueType = cf.field?.fieldType?.valueType?.toLowerCase() ?? '';
+      const fieldName = cf.field?.name?.toLowerCase() ?? '';
+
+      // State-type fields
       if (valueType.includes('state') && cf.bundle?.values) {
         for (const val of cf.bundle.values) {
           if (!allStates.has(val.id)) {
@@ -159,38 +174,9 @@ export async function loadProjectStates(
           }
         }
       }
-    }
-  }
 
-  return Array.from(allStates.values());
-}
-
-// ─── Issue Types ─────────────────────────────────────────────────────────────
-
-export async function loadIssueTypes(
-  host: EmbeddableWidgetAPI,
-  projectIds: string[]
-): Promise<IssueType[]> {
-  const allTypes: Map<string, IssueType> = new Map();
-
-  for (const projectId of projectIds) {
-    const fields = await host.fetchYouTrack<ProjectCustomFieldInfo[]>(
-      `admin/projects/${projectId}/customFields`,
-      {
-        query: { fields: PROJECT_CUSTOM_FIELD_FIELDS },
-      }
-    );
-
-    for (const cf of fields) {
-      const fieldName = cf.field?.name?.toLowerCase() ?? '';
-      const valueType = cf.field?.fieldType?.valueType?.toLowerCase() ?? '';
-      // Look for the exact "Type" field (enum type) — use strict equality to avoid
-      // matching unrelated fields like "Subsystem type", "Priority type", etc.
-      if (
-        fieldName === 'type' &&
-        valueType.includes('enum') &&
-        cf.bundle?.values
-      ) {
+      // Exact "Type" enum field
+      if (fieldName === 'type' && valueType.includes('enum') && cf.bundle?.values) {
         for (const val of cf.bundle.values) {
           if (!allTypes.has(val.id)) {
             allTypes.set(val.id, { id: val.id, name: val.name });
@@ -200,7 +186,26 @@ export async function loadIssueTypes(
     }
   }
 
-  return Array.from(allTypes.values());
+  return {
+    states: Array.from(allStates.values()),
+    types: Array.from(allTypes.values()),
+  };
+}
+
+/** @deprecated Use loadProjectCustomFields instead */
+export async function loadProjectStates(
+  host: EmbeddableWidgetAPI,
+  projectIds: string[]
+): Promise<StatusOrderItem[]> {
+  return (await loadProjectCustomFields(host, projectIds)).states;
+}
+
+/** @deprecated Use loadProjectCustomFields instead */
+export async function loadIssueTypes(
+  host: EmbeddableWidgetAPI,
+  projectIds: string[]
+): Promise<IssueType[]> {
+  return (await loadProjectCustomFields(host, projectIds)).types;
 }
 
 // ─── Issue Activities ────────────────────────────────────────────────────────
@@ -214,12 +219,17 @@ export async function loadIssueActivities(
     {
       query: {
         fields: ACTIVITY_FIELDS,
-        categories: 'CustomFieldCategory,IssueResolvedCategory',
-        $top: 1000,
+        categories: ACTIVITY_CATEGORIES,
+        $top: ACTIVITIES_PAGE_SIZE,
       },
     }
   );
-  console.log('[DEBUG] activitiesPage raw response:', JSON.stringify(page, null, 2));
+  if (page?.hasAfter === true) {
+    console.warn(
+      `[issues-progress] Activity page for issue ${issueId} has more entries beyond the first ${ACTIVITIES_PAGE_SIZE}. ` +
+      'Some activity history may be truncated.'
+    );
+  }
   return page?.activities ?? [];
 }
 
@@ -302,7 +312,7 @@ export async function loadIssuesWithActivities(
     allIssues.push(...batch);
     skip += batch.length;
     hasMore = batch.length === ISSUES_PACK_SIZE;
-    onProgress?.('issues', allIssues.length, allIssues.length + (hasMore ? 1 : 0));
+    onProgress?.('issues', allIssues.length, -1);
   }
 
   if (allIssues.length === 0) {
