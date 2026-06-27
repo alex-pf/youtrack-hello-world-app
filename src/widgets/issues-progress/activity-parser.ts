@@ -7,6 +7,7 @@ import {
   EstimateDateChange,
   StatusOrderItem,
 } from './types';
+import { extractIssueTypeName } from './resources';
 
 // ─── State Timeline Entry ─────────────────────────────────────────────────────
 
@@ -41,6 +42,40 @@ function toActivityValueArray(val: ActivityValue[] | ActivityValue | null): Acti
   return [val];
 }
 
+function isNumberValue(v: unknown): v is number {
+  return typeof v === 'number' && v > 0;
+}
+
+/**
+ * Filters and sorts activity items to only state-change events.
+ * Shared by parseStateSegments and parseStateTimeline.
+ */
+function filterStateActivities(activities: IssueActivityItem[]): IssueActivityItem[] {
+  return activities
+    .filter((a) => {
+      // Method 2: Check $type on added/removed values — language-independent
+      const addedArr = toActivityValueArray(a.added);
+      const removedArr = toActivityValueArray(a.removed);
+      const allVals = [...addedArr, ...removedArr];
+      if (allVals.some((v) => v.$type?.toLowerCase().includes('state'))) return true;
+
+      // Method 3: Check field name — covers English and common localizations
+      const fieldName = a.field?.name?.toLowerCase() ?? '';
+      if (
+        fieldName === 'state' ||
+        fieldName === 'status' ||
+        fieldName === 'состояние' ||  // Russian
+        fieldName === 'статус' ||      // Russian alternative
+        fieldName === 'estado' ||      // Spanish/Portuguese
+        fieldName === 'zustand' ||     // German
+        fieldName === 'état'           // French
+      ) return true;
+
+      return false;
+    })
+    .sort((a, b) => a.timestamp - b.timestamp);
+}
+
 // ─── State History Parser ─────────────────────────────────────────────────────
 
 /**
@@ -67,33 +102,7 @@ export function parseStateSegments(
   issueCreatedAt: number
 ): StatusSegment[] {
   // Filter to state-change activities only — multi-method, language-independent
-  const stateChanges = activities
-    .filter((a) => {
-      // Method 1 (customField removed from API — field is FilterField, not CustomField):
-      // Fall through to Method 2 and Method 3 below.
-
-      // Method 2: Check $type on added/removed values — language-independent
-      // State bundle values have $type like 'StateIssueCustomField', 'StateBundleElement'
-      const addedArr = toActivityValueArray(a.added);
-      const removedArr = toActivityValueArray(a.removed);
-      const allVals = [...addedArr, ...removedArr];
-      if (allVals.some((v) => v.$type?.toLowerCase().includes('state'))) return true;
-
-      // Method 3: Check field name — covers English and common localizations
-      const fieldName = a.field?.name?.toLowerCase() ?? '';
-      if (
-        fieldName === 'state' ||
-        fieldName === 'status' ||
-        fieldName === 'состояние' ||  // Russian
-        fieldName === 'статус' ||      // Russian alternative
-        fieldName === 'estado' ||      // Spanish/Portuguese
-        fieldName === 'zustand' ||     // German
-        fieldName === 'état'           // French
-      ) return true;
-
-      return false;
-    })
-    .sort((a, b) => a.timestamp - b.timestamp);
+  const stateChanges = filterStateActivities(activities);
 
   if (stateChanges.length === 0) {
     return [];
@@ -235,33 +244,11 @@ export function parseStateSegments(
  * @returns Ordered array of StateTimelineEntry, earliest first
  */
 export function parseStateTimeline(
-  _issueId: string,
   activities: IssueActivityItem[],
   issueCreatedAt: number
 ): StateTimelineEntry[] {
   // Filter to state-change activities only (same logic as parseStateSegments)
-  const stateChanges = activities
-    .filter((a) => {
-      // customField removed from API (field is FilterField) — use Method 2 and Method 3.
-      const addedArr = toActivityValueArray(a.added);
-      const removedArr = toActivityValueArray(a.removed);
-      const allVals = [...addedArr, ...removedArr];
-      if (allVals.some((v) => v.$type?.toLowerCase().includes('state'))) return true;
-
-      const fieldName = a.field?.name?.toLowerCase() ?? '';
-      if (
-        fieldName === 'state' ||
-        fieldName === 'status' ||
-        fieldName === 'состояние' ||
-        fieldName === 'статус' ||
-        fieldName === 'estado' ||
-        fieldName === 'zustand' ||
-        fieldName === 'état'
-      ) return true;
-
-      return false;
-    })
-    .sort((a, b) => a.timestamp - b.timestamp);
+  const stateChanges = filterStateActivities(activities);
 
   if (stateChanges.length === 0) return [];
 
@@ -397,20 +384,32 @@ function getEstimateDateFromFields(issue: Issue): number | null {
     return name.includes('estimated') || name.includes('due date') || name.includes('deadline');
   });
   if (!field) return null;
-  const val = field.value as unknown;
-  if (typeof val === 'number' && val > 0) return val;
+  const val: unknown = field.value;
+  if (isNumberValue(val)) return val;
   return null;
 }
 
-export function calculateProjectedLeadTime(
-  issueCreatedAt: number,
+/**
+ * Computes projected lead time (days) and the target date for an issue.
+ * Prefers the current field value from issue.fields, falls back to activity history.
+ *
+ * @returns { days, date } or null if no estimate date is available
+ */
+function calculateProjectedLeadTime(
+  issue: Issue,
   estimateDateChanges: EstimateDateChange[]
-): number | null {
-  if (estimateDateChanges.length === 0) return null;
+): { days: number; date: number } | null {
+  if (!issue.created) return null;
   const lastChange = estimateDateChanges[estimateDateChanges.length - 1];
-  const currentEstimatedDate = lastChange.toDate ?? lastChange.fromDate;
-  if (currentEstimatedDate === null) return null;
-  return (currentEstimatedDate - issueCreatedAt) / (24 * 60 * 60 * 1000);
+  const estimatedDateMs =
+    getEstimateDateFromFields(issue) ??
+    lastChange?.toDate ??
+    lastChange?.fromDate ??
+    null;
+  if (estimatedDateMs === null) return null;
+  const days = (estimatedDateMs - issue.created) / (24 * 60 * 60 * 1000);
+  if (days <= 0) return null;
+  return { days, date: estimatedDateMs };
 }
 
 // ─── Main Aggregator ──────────────────────────────────────────────────────────
@@ -445,39 +444,15 @@ export function buildIssueChartData(
     : [];
 
   // Projected Lead Time: prefer current field value (reliable), fall back to activity history.
-  let projectedLeadTimeDays: number | undefined;
-  let projectedLTDate: number | undefined;
-  if (showProjectedLT && issue.created) {
-    const lastChange = estimateDateChanges[estimateDateChanges.length - 1];
-    const estimatedDateMs =
-      getEstimateDateFromFields(issue) ??
-      lastChange?.toDate ??
-      lastChange?.fromDate ??
-      null;
-    if (estimatedDateMs !== null) {
-      const days = (estimatedDateMs - issue.created) / (24 * 60 * 60 * 1000);
-      if (days > 0) {
-        projectedLeadTimeDays = days;
-        projectedLTDate = estimatedDateMs;
-      }
-    }
-  }
+  const projectedLT = showProjectedLT
+    ? calculateProjectedLeadTime(issue, estimateDateChanges)
+    : null;
+  const projectedLeadTimeDays = projectedLT?.days;
+  const projectedLTDate = projectedLT?.date;
 
   const totalDays = segments.reduce((sum, s) => sum + s.durationDays, 0);
 
-  // Extract issue type from fields
-  const typeField = issue.fields?.find(
-    (f) => f.projectCustomField?.field?.name?.toLowerCase() === 'type'
-  );
-  let issueType: string | undefined;
-  if (typeField?.value) {
-    const val = typeField.value;
-    if (Array.isArray(val)) {
-      issueType = val[0]?.name;
-    } else {
-      issueType = (val as { name?: string })?.name;
-    }
-  }
+  const issueType = extractIssueTypeName(issue);
 
   return {
     issueId: issue.id,
@@ -489,6 +464,7 @@ export function buildIssueChartData(
     totalDays,
     projectedLeadTimeDays,
     projectedLTDate,
+    createdAt: issue.created ?? undefined,
   };
 }
 
