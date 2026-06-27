@@ -12,7 +12,9 @@
   "dependencies": {
     "@jetbrains/ring-ui-built": "^7.0.79",
     "@types/d3": "^7.4.3",
+    "@types/marked": "^5.0.2",
     "d3": "^7.9.0",
+    "marked": "^18.0.5",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },

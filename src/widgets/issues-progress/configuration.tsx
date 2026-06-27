@@ -40,6 +40,7 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
   const [showProjectedLT, setShowProjectedLT] = useState(config?.showProjectedLT ?? false);
   const [refreshInterval, setRefreshInterval] = useState(config?.refreshInterval ?? 0);
   const [debugMode, setDebugMode] = useState(config?.debugMode ?? false);
+  const [description, setDescription] = useState(config?.description ?? '');
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
   const [isLoadingStates, setIsLoadingStates] = useState(false);
 
@@ -180,6 +181,7 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
       showProjectedLT,
       refreshInterval,
       debugMode,
+      description,
     };
     await host.storeConfig(serializeConfig(newConfig));
     onSave(newConfig);
@@ -191,21 +193,8 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
     <form className="ring-form" style={{padding: '8px 16px', overflowY: 'auto', maxHeight: '100vh'}}>
       <span className="ring-form__title">Issues Progress Settings</span>
 
-      {/* ── 1. Query Filter ── */}
-      <div style={{marginTop: 8, marginBottom: 4}}>
-        <span className="ip-section-label">Query Filter</span>
-        <QueryAssist
-          query={search}
-          placeholder="project: DEMO State: Open"
-          dataSource={queryAssistHandler}
-          onChange={({query}) => setSearch(query)}
-          onApply={({query}) => setSearch(query)}
-          size={InputSize.M}
-        />
-      </div>
-
-      {/* ── 2. Project Selector ── */}
-      <div style={{marginTop: 12, marginBottom: 8}}>
+      {/* ── 1. Project Selector ── */}
+      <div style={{marginTop: 8, marginBottom: 8}}>
         <span className="ip-section-label">Projects</span>
         {isLoadingProjects && availableProjects.length === 0 ? (
           <LoaderInline />
@@ -223,6 +212,19 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
             notFoundMessage="No projects found"
           />
         )}
+      </div>
+
+      {/* ── 2. Query Filter ── */}
+      <div style={{marginTop: 8, marginBottom: 4}}>
+        <span className="ip-section-label">Query Filter</span>
+        <QueryAssist
+          query={search}
+          placeholder="project: DEMO State: Open"
+          dataSource={queryAssistHandler}
+          onChange={({query}) => setSearch(query)}
+          onApply={({query}) => setSearch(query)}
+          size={InputSize.M}
+        />
       </div>
 
       {/* ── 3. Status Sorter (only when projects selected) ── */}
@@ -409,6 +411,30 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
           onChange={(item: SelectItem | null) =>
             setRefreshInterval((item?.key as number) ?? 0)
           }
+        />
+      </div>
+
+      {/* ── Description (Markdown) ── */}
+      <div style={{marginTop: 12, marginBottom: 8}}>
+        <span className="ip-section-label">Description (Markdown)</span>
+        <textarea
+          value={description}
+          onChange={e => setDescription(e.target.value)}
+          placeholder="Напишите описание для пользователей виджета. Поддерживается **Markdown**."
+          rows={5}
+          style={{
+            width: '100%',
+            boxSizing: 'border-box',
+            resize: 'vertical',
+            fontFamily: 'var(--ring-font-family)',
+            fontSize: 'var(--ring-font-size)',
+            color: 'var(--ring-text-color)',
+            background: 'var(--ring-content-background-color)',
+            border: '1px solid var(--ring-borders-color)',
+            borderRadius: 4,
+            padding: '6px 8px',
+            lineHeight: '1.5',
+          }}
         />
       </div>
 
