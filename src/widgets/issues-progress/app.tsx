@@ -303,7 +303,6 @@ export default function App({ host }: Props) {
       {descriptionHtml && (
         <div
           className="ip-description"
-          style={{flexShrink: 0, overflow: 'auto', maxHeight: '40%'}}
           dangerouslySetInnerHTML={{__html: descriptionHtml}}
         />
       )}

@@ -235,6 +235,8 @@
   font-size: var(--ring-font-size);
   color: var(--ring-text-color);
   line-height: 1.6;
+  overflow: auto;
+  max-height: 30vh;
 }
 
 .ip-description h1,
