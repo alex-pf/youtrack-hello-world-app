@@ -446,6 +446,7 @@ export function buildIssueChartData(
 
   // Projected Lead Time: prefer current field value (reliable), fall back to activity history.
   let projectedLeadTimeDays: number | undefined;
+  let projectedLTDate: number | undefined;
   if (showProjectedLT && issue.created) {
     const lastChange = estimateDateChanges[estimateDateChanges.length - 1];
     const estimatedDateMs =
@@ -455,7 +456,10 @@ export function buildIssueChartData(
       null;
     if (estimatedDateMs !== null) {
       const days = (estimatedDateMs - issue.created) / (24 * 60 * 60 * 1000);
-      if (days > 0) projectedLeadTimeDays = days;
+      if (days > 0) {
+        projectedLeadTimeDays = days;
+        projectedLTDate = estimatedDateMs;
+      }
     }
   }
 
@@ -484,6 +488,7 @@ export function buildIssueChartData(
     estimateDateChanges,
     totalDays,
     projectedLeadTimeDays,
+    projectedLTDate,
   };
 }
 
