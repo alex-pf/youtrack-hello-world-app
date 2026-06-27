@@ -1,6 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import LoaderInline from '@jetbrains/ring-ui-built/components/loader-inline/loader-inline';
 import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 import { EmbeddableWidgetAPI } from '../../../@types/globals';
 import Configuration from './configuration';
 import GanttChart from './gantt-chart';
@@ -24,6 +25,8 @@ export default function App({ host }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [baseUrl, setBaseUrl] = useState('');
   const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Ref to always have the latest config inside setInterval closure
+  const configRef = useRef<WidgetConfig | null>(null);
   // Raw data kept for debug mode rendering
   const [debugIssues, setDebugIssues] = useState<Issue[]>([]);
   const [debugActivitiesMap, setDebugActivitiesMap] = useState<Map<string, IssueActivityItem[]>>(new Map());
@@ -38,66 +41,8 @@ export default function App({ host }: Props) {
     return () => window.removeEventListener('yt-widget-configure', handleConfigure);
   }, [host]);
 
-  // ─── Initialization ────────────────────────────────────────────────────────
-  useEffect(() => {
-    async function init() {
-      try {
-        // Load base URL for issue links
-        const services = await host.loadServices('YouTrack');
-        if (services?.[0]?.homeUrl) {
-          setBaseUrl(services[0].homeUrl);
-        }
-
-        // Load saved config
-        const stored = await host.readConfig<Record<string, string>>();
-        if (!stored?.search) {
-          // No config yet — enter configuration mode
-          setIsConfiguring(true);
-          await host.enterConfigMode();
-          setIsLoading(false);
-          return;
-        }
-
-        const parsedConfig = parseStoredConfig(stored);
-        setConfig(parsedConfig);
-        await fetchData(parsedConfig, false);
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        setError(msg);
-        await host.setError(e as Error);
-      } finally {
-        await host.setLoadingAnimationEnabled(false);
-        setIsLoading(false);
-      }
-    }
-    init();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [host]);
-
-  // ─── Auto-refresh ──────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (refreshTimerRef.current) {
-      clearInterval(refreshTimerRef.current);
-      refreshTimerRef.current = null;
-    }
-
-    if (config?.refreshInterval && config.refreshInterval > 0) {
-      const intervalMs = config.refreshInterval * 60 * 1000;
-      refreshTimerRef.current = setInterval(() => {
-        fetchData(config, true);
-      }, intervalMs);
-    }
-
-    return () => {
-      if (refreshTimerRef.current) {
-        clearInterval(refreshTimerRef.current);
-      }
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config?.refreshInterval]);
-
   // ─── Data fetching ─────────────────────────────────────────────────────────
-  async function fetchData(cfg: WidgetConfig, silent: boolean) {
+  const fetchData = useCallback(async (cfg: WidgetConfig, silent: boolean) => {
     if (!silent) {
       setIsLoading(true);
       setError(null);
@@ -155,11 +100,73 @@ export default function App({ host }: Props) {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }
+  }, [host]);
+
+  // ─── Initialization ────────────────────────────────────────────────────────
+  useEffect(() => {
+    async function init() {
+      try {
+        // Load base URL for issue links
+        const services = await host.loadServices('YouTrack');
+        if (services?.[0]?.homeUrl) {
+          setBaseUrl(services[0].homeUrl);
+        } else {
+          console.warn('YouTrack homeUrl not found, issue links will be relative');
+        }
+
+        // Load saved config
+        const stored = await host.readConfig<Record<string, string>>();
+        if (!stored?.search) {
+          // No config yet — enter configuration mode
+          setIsConfiguring(true);
+          await host.enterConfigMode();
+          setIsLoading(false);
+          return;
+        }
+
+        const parsedConfig = parseStoredConfig(stored);
+        setConfig(parsedConfig);
+        configRef.current = parsedConfig;
+        await fetchData(parsedConfig, false);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        setError(msg);
+        await host.setError(e as Error);
+      } finally {
+        await host.setLoadingAnimationEnabled(false);
+        setIsLoading(false);
+      }
+    }
+    init();
+  }, [host, fetchData]);
+
+  // ─── Auto-refresh ──────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (refreshTimerRef.current) {
+      clearInterval(refreshTimerRef.current);
+      refreshTimerRef.current = null;
+    }
+
+    if (config?.refreshInterval && config.refreshInterval > 0) {
+      const intervalMs = config.refreshInterval * 60 * 1000;
+      refreshTimerRef.current = setInterval(() => {
+        if (configRef.current) {
+          fetchData(configRef.current, true);
+        }
+      }, intervalMs);
+    }
+
+    return () => {
+      if (refreshTimerRef.current) {
+        clearInterval(refreshTimerRef.current);
+      }
+    };
+  }, [config?.refreshInterval, fetchData]);
 
   // ─── Config save handler ───────────────────────────────────────────────────
   const handleConfigSave = async (newConfig: WidgetConfig) => {
     setConfig(newConfig);
+    configRef.current = newConfig;
     setIsConfiguring(false);
     setIsLoading(true);
     await fetchData(newConfig, false);
@@ -174,6 +181,27 @@ export default function App({ host }: Props) {
       host.exitConfigMode();
     }
   };
+
+  // ─── Derived render values (hooks must be before early returns) ───────────
+  const sortedData = useMemo(
+    () => [...chartData].sort((a, b) => {
+      const aDate = a.estimateDateChanges.length > 0
+        ? Math.max(...a.estimateDateChanges.map(c => c.changedAt))
+        : Infinity;
+      const bDate = b.estimateDateChanges.length > 0
+        ? Math.max(...b.estimateDateChanges.map(c => c.changedAt))
+        : Infinity;
+      return aDate - bDate;
+    }),
+    [chartData]
+  );
+
+  const descriptionHtml = useMemo(
+    () => config?.description
+      ? DOMPurify.sanitize(marked(config.description) as string)
+      : '',
+    [config?.description]
+  );
 
   // ─── Render ────────────────────────────────────────────────────────────────
 
@@ -231,20 +259,6 @@ export default function App({ host }: Props) {
     );
   }
 
-  const sortedData = [...chartData].sort((a, b) => {
-    const aDate = a.estimateDateChanges.length > 0
-      ? Math.max(...a.estimateDateChanges.map(c => c.changedAt))
-      : Infinity;
-    const bDate = b.estimateDateChanges.length > 0
-      ? Math.max(...b.estimateDateChanges.map(c => c.changedAt))
-      : Infinity;
-    return aDate - bDate;
-  });
-
-  const descriptionHtml = config?.description
-    ? (marked(config.description) as string)
-    : '';
-
   return (
     <div style={{ position: 'absolute', inset: 0, display: 'grid', gridTemplateRows: 'auto 1fr auto', overflow: 'hidden' }}>
       {/* Toolbar */}
@@ -282,7 +296,7 @@ export default function App({ host }: Props) {
             opacity: isRefreshing ? 0.5 : 1,
           }}
         >
-          Обновить
+          Refresh
         </button>
       </div>
 
@@ -310,7 +324,7 @@ export default function App({ host }: Props) {
       {/* Debug: status transition history */}
       {config?.debugMode && (
         <div className="ip-debug">
-          <div className="ip-debug__title">Отладка: история переходов статусов</div>
+          <div className="ip-debug__title">Debug: status transition history</div>
           {chartData.map((issue) => {
             const issueObj = debugIssues.find((i) => i.id === issue.issueId);
             const activities = debugActivitiesMap.get(issue.issueId) ?? [];
@@ -326,13 +340,13 @@ export default function App({ host }: Props) {
                   {issue.summary}
                 </div>
                 {timeline.length === 0 ? (
-                  <div className="ip-debug__no-history">Нет данных о переходах</div>
+                  <div className="ip-debug__no-history">No transition data</div>
                 ) : (
                   <ol className="ip-debug__transitions">
                     {timeline.map((entry, idx) => (
                       <li key={idx} className="ip-debug__transition">
                         <span className="ip-debug__date">
-                          {new Date(entry.timestamp).toLocaleDateString('ru-RU', {
+                          {new Date(entry.timestamp).toLocaleDateString('en-US', {
                             year: 'numeric',
                             month: '2-digit',
                             day: '2-digit',
