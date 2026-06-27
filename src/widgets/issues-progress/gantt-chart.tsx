@@ -403,8 +403,7 @@ export default function GanttChart({
         const rowG = d3.select(this);
         const tickX = xScale(issueData.projectedLeadTimeDays);
 
-        const lastChange = issueData.estimateDateChanges[issueData.estimateDateChanges.length - 1];
-        const estimatedDate = lastChange?.toDate ?? lastChange?.fromDate ?? null;
+        const estimatedDate = issueData.projectedLTDate ?? null;
 
         rowG.append('line')
           .attr('class', 'projected-lt-marker')

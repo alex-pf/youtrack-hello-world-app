@@ -175,6 +175,7 @@ export interface IssueChartData {
   estimateDateChanges: EstimateDateChange[];
   totalDays: number;           // sum of all segment days
   projectedLeadTimeDays?: number;
+  projectedLTDate?: number;
 }
 
 export interface StatusSegment {
