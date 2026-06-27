@@ -246,7 +246,7 @@ export default function App({ host }: Props) {
     : '';
 
   return (
-    <div style={{ width: '100%', height: '100%', position: 'relative', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div style={{ position: 'absolute', inset: 0, display: 'grid', gridTemplateRows: 'auto 1fr auto', overflow: 'hidden' }}>
       {/* Toolbar */}
       <div style={{
         display: 'flex',
@@ -287,7 +287,7 @@ export default function App({ host }: Props) {
       </div>
 
       {/* Gantt chart — scrollable, takes all remaining space */}
-      <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+      <div style={{ overflow: 'auto', minHeight: 0 }}>
         <GanttChart
           data={sortedData}
           statusOrder={config?.statusOrder ?? []}
