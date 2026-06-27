@@ -9,6 +9,7 @@ interface GanttChartProps {
   ltEnabled: boolean;
   ltSettings: LtSettings;
   showEstimateDate: boolean;
+  showProjectedLT: boolean;
   baseUrl: string;
 }
 
@@ -33,6 +34,7 @@ export default function GanttChart({
   ltEnabled,
   ltSettings,
   showEstimateDate,
+  showProjectedLT,
   baseUrl,
 }: GanttChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -385,6 +387,72 @@ export default function GanttChart({
       });
     }
 
+    if (showProjectedLT) {
+      rows.each(function (issueData) {
+        if (!issueData.projectedLeadTimeDays || issueData.projectedLeadTimeDays <= 0) return;
+
+        const rowG = d3.select(this);
+        const tickX = xScale(issueData.projectedLeadTimeDays);
+
+        const lastChange = issueData.estimateDateChanges[issueData.estimateDateChanges.length - 1];
+        const estimatedDate = lastChange?.toDate ?? lastChange?.fromDate ?? null;
+
+        rowG.append('line')
+          .attr('class', 'projected-lt-marker')
+          .attr('x1', tickX)
+          .attr('x2', tickX)
+          .attr('y1', ROW_PADDING)
+          .attr('y2', ROW_PADDING + TICK_HEIGHT)
+          .attr('stroke', '#22C55E')
+          .attr('stroke-width', 2.5)
+          .attr('opacity', 0.95);
+
+        if (estimatedDate !== null) {
+          const dateLabel = new Date(estimatedDate).toLocaleDateString(undefined, {
+            day: '2-digit', month: '2-digit', year: '2-digit',
+          });
+          rowG.append('text')
+            .attr('class', 'projected-lt-marker-label')
+            .attr('x', tickX + 3)
+            .attr('y', ROW_PADDING + 10)
+            .attr('font-size', '9px')
+            .attr('fill', '#22C55E')
+            .attr('font-weight', 'bold')
+            .text(dateLabel);
+        }
+
+        const capturedDays = issueData.projectedLeadTimeDays;
+        const capturedDate = estimatedDate;
+        rowG.append('rect')
+          .attr('class', 'projected-lt-marker-target')
+          .attr('x', tickX - 6)
+          .attr('y', ROW_PADDING)
+          .attr('width', 12)
+          .attr('height', TICK_HEIGHT)
+          .attr('fill', 'transparent')
+          .attr('cursor', 'pointer')
+          .on('mouseover', function (event: MouseEvent) {
+            if (!tooltipEl) return;
+            const dateStr = capturedDate ? new Date(capturedDate).toLocaleDateString() : '—';
+            tooltipEl.innerHTML = `
+              <div class="ip-gantt-tooltip__header">Projected Lead Time</div>
+              <div class="ip-gantt-tooltip__row">
+                <span class="ip-gantt-tooltip__label">Days:</span>
+                <span>${capturedDays.toFixed(1)}</span>
+              </div>
+              <div class="ip-gantt-tooltip__row">
+                <span class="ip-gantt-tooltip__label">Estimated Date:</span>
+                <span>${dateStr}</span>
+              </div>
+            `;
+            tooltipEl.style.display = 'block';
+            moveTooltip(event);
+          })
+          .on('mousemove', function (event: MouseEvent) { moveTooltip(event); })
+          .on('mouseout', function () { hideTooltip(); });
+      });
+    }
+
     // ─── Y axis (issue IDs as clickable links via foreignObject) ─────────────
     const yAxisG = g.append('g').attr('class', 'y-axis');
 
@@ -416,7 +484,7 @@ export default function GanttChart({
         .text(issueData.idReadable);
     });
 
-  }, [data, containerWidth, ltEnabled, ltSettings, showEstimateDate, statusOrder, baseUrl]);
+  }, [data, containerWidth, ltEnabled, ltSettings, showEstimateDate, showProjectedLT, statusOrder, baseUrl]);
 
   // ─── Legend ──────────────────────────────────────────────────────────────────
   if (data.length === 0) {

@@ -37,6 +37,7 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
   const [ltSettings, setLtSettings] = useState<LtSettings>(config?.ltSettings ?? {});
   const [availableIssueTypes, setAvailableIssueTypes] = useState<IssueType[]>([]);
   const [showEstimateDate, setShowEstimateDate] = useState(config?.showEstimateDate ?? false);
+  const [showProjectedLT, setShowProjectedLT] = useState(config?.showProjectedLT ?? false);
   const [refreshInterval, setRefreshInterval] = useState(config?.refreshInterval ?? 0);
   const [debugMode, setDebugMode] = useState(config?.debugMode ?? false);
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
@@ -176,6 +177,7 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
       ltEnabled,
       ltSettings,
       showEstimateDate,
+      showProjectedLT,
       refreshInterval,
       debugMode,
     };
@@ -375,6 +377,15 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
           label="Show Estimate Date history"
           checked={showEstimateDate}
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => setShowEstimateDate(e.target.checked)}
+        />
+      </div>
+
+      {/* ── 5a. Projected Lead Time Toggle ── */}
+      <div style={{marginTop: 8, marginBottom: 8}}>
+        <Checkbox
+          label="Show Projected Lead Time"
+          checked={showProjectedLT}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setShowProjectedLT(e.target.checked)}
         />
       </div>
 

@@ -137,7 +137,8 @@ export default function App({ host }: Props) {
         issues,
         activitiesMap,
         cfg.statusOrder,
-        cfg.showEstimateDate
+        cfg.showEstimateDate,
+        cfg.showProjectedLT ?? false
       );
 
       setChartData(data);
@@ -266,6 +267,7 @@ export default function App({ host }: Props) {
         ltEnabled={config?.ltEnabled ?? false}
         ltSettings={config?.ltSettings ?? {}}
         showEstimateDate={config?.showEstimateDate ?? false}
+        showProjectedLT={config?.showProjectedLT ?? false}
         baseUrl={baseUrl}
       />
 

@@ -23,6 +23,7 @@ export interface WidgetConfig {
   ltEnabled: boolean;
   ltSettings: LtSettings;       // per-type LT thresholds
   showEstimateDate: boolean;
+  showProjectedLT: boolean;
   refreshInterval: number;      // minutes; 0 = no auto-refresh
   debugMode: boolean;           // show status transition history below chart
 }
@@ -36,6 +37,7 @@ export interface StoredWidgetConfig {
   ltEnabled?: string;           // 'true' | 'false'
   ltSettings?: string;          // JSON-encoded LtSettings
   showEstimateDate?: string;    // 'true' | 'false'
+  showProjectedLT?: string;
   refreshInterval?: number;
   debugMode?: string;           // 'true' | 'false'
 }
@@ -49,6 +51,7 @@ export function parseStoredConfig(stored: Record<string, string>): WidgetConfig 
     ltEnabled: stored.ltEnabled === 'true',
     ltSettings: stored.ltSettings ? JSON.parse(stored.ltSettings) : {},
     showEstimateDate: stored.showEstimateDate === 'true',
+    showProjectedLT: stored.showProjectedLT === 'true',
     refreshInterval: stored.refreshInterval ? Number(stored.refreshInterval) : 0,
     debugMode: stored.debugMode === 'true',
   };
@@ -63,6 +66,7 @@ export function serializeConfig(config: WidgetConfig): StoredWidgetConfig {
     ltEnabled: String(config.ltEnabled),
     ltSettings: JSON.stringify(config.ltSettings),
     showEstimateDate: String(config.showEstimateDate),
+    showProjectedLT: String(config.showProjectedLT),
     refreshInterval: config.refreshInterval,
     debugMode: String(config.debugMode),
   };
@@ -170,6 +174,7 @@ export interface IssueChartData {
   // Estimate date changes (deduplicated per day)
   estimateDateChanges: EstimateDateChange[];
   totalDays: number;           // sum of all segment days
+  projectedLeadTimeDays?: number;
 }
 
 export interface StatusSegment {
