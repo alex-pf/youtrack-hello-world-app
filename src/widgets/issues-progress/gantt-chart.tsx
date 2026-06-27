@@ -417,17 +417,24 @@ export default function GanttChart({
           .attr('opacity', 0.95);
 
         if (estimatedDate !== null) {
-          const dateLabel = new Date(estimatedDate).toLocaleDateString(undefined, {
+          const dateStr = new Date(estimatedDate).toLocaleDateString(undefined, {
             day: '2-digit', month: '2-digit', year: '2-digit',
           });
+          const ltDays = issueData.projectedLeadTimeDays.toFixed(1);
+          const labelText = `LT->${ltDays}d; ${dateStr}`;
+          // ~5.4px per char at 9px font size; shift left if label overflows right edge
+          const estimatedLabelWidth = labelText.length * 5.4;
+          const labelX = tickX + estimatedLabelWidth + 4 > chartWidth
+            ? tickX - estimatedLabelWidth - 4
+            : tickX + 4;
           rowG.append('text')
             .attr('class', 'projected-lt-marker-label')
-            .attr('x', tickX + 3)
+            .attr('x', labelX)
             .attr('y', ROW_PADDING + 10)
             .attr('font-size', '9px')
             .attr('fill', '#22C55E')
             .attr('font-weight', 'bold')
-            .text(dateLabel);
+            .text(labelText);
         }
 
         const capturedDays = issueData.projectedLeadTimeDays;
