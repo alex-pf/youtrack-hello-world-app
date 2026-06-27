@@ -245,6 +245,14 @@
   font-weight: 600;
 }
 
+.ip-description > :first-child {
+  margin-top: 0;
+}
+
+.ip-description > :last-child {
+  margin-bottom: 0;
+}
+
 .ip-description p {
   margin: 0.4em 0;
 }
