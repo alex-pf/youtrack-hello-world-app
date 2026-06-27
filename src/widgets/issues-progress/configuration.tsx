@@ -10,7 +10,7 @@ import Checkbox from '@jetbrains/ring-ui-built/components/checkbox/checkbox';
 import type {EmbeddableWidgetAPI} from '../../../@types/globals';
 import type {WidgetConfig, StatusOrderItem, LtSettings, ProjectInfo, IssueType} from './types';
 import {serializeConfig} from './types';
-import {loadProjects, loadProjectStates, loadIssueTypes, queryAssistDataSource} from './resources';
+import {loadProjects, loadProjectCustomFields, queryAssistDataSource} from './resources';
 
 interface Props {
   config: WidgetConfig | null;
@@ -57,11 +57,8 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
 
     if (config?.projects?.length) {
       setIsLoadingStates(true);
-      Promise.all([
-        loadProjectStates(host, config.projects),
-        loadIssueTypes(host, config.projects),
-      ])
-        .then(([states, types]) => {
+      loadProjectCustomFields(host, config.projects)
+        .then(({states, types}) => {
           setAvailableStates(states);
           setAvailableIssueTypes(types);
         })
@@ -82,11 +79,8 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
       return;
     }
     setIsLoadingStates(true);
-    Promise.all([
-      loadProjectStates(host, selectedProjectIds),
-      loadIssueTypes(host, selectedProjectIds),
-    ])
-      .then(([states, types]) => {
+    loadProjectCustomFields(host, selectedProjectIds)
+      .then(({states, types}) => {
         setAvailableStates(states);
         setAvailableIssueTypes(types);
         // Remove any statusOrder items that are no longer available
