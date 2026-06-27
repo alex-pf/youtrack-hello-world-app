@@ -130,7 +130,11 @@ export default function GanttChart({
       .attr('transform', `translate(${MARGIN.left},${MARGIN.top})`);
 
     // ─── X scale (days) ──────────────────────────────────────────────────────
-    const maxDays = d3.max(data, (d) => d.totalDays) ?? 30;
+    const maxTotalDays = d3.max(data, (d) => d.totalDays) ?? 30;
+    const maxProjectedDays = showProjectedLT
+      ? (d3.max(data, (d) => d.projectedLeadTimeDays ?? 0) ?? 0)
+      : 0;
+    const maxDays = Math.max(maxTotalDays, maxProjectedDays);
     const xDomain: [number, number] = [0, maxDays * 1.05];
     const xScale = d3.scaleLinear().domain(xDomain).range([0, chartWidth]);
 
