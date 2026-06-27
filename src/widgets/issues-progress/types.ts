@@ -178,6 +178,7 @@ export interface IssueChartData {
   // Estimate date changes (deduplicated per day)
   estimateDateChanges: EstimateDateChange[];
   totalDays: number;           // sum of all segment days
+  createdAt?: number;          // Unix ms issue creation timestamp (used for estimate tick positioning)
   projectedLeadTimeDays?: number;
   projectedLTDate?: number;
 }
