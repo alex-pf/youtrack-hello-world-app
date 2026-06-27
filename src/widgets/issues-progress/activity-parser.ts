@@ -356,10 +356,12 @@ export function parseEstimateDateChanges(
         if (!isNaN(ts) && ts > 0) return ts;
       }
 
-      // FALLBACK 1: val.id as numeric timestamp (safety net)
+      // FALLBACK 1: val.id as numeric timestamp or ISO date string (YouTrack date-only fields return "YYYY-MM-DD")
       if (val.id) {
         const ts = Number(val.id);
         if (!isNaN(ts) && ts > 0) return ts;
+        const isoTs = Date.parse(val.id);
+        if (!isNaN(isoTs) && isoTs > 0) return isoTs;
       }
 
       // FALLBACK 2: presentation string (last resort)
