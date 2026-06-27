@@ -392,6 +392,11 @@ export default function GanttChart({
     }
 
     if (showProjectedLT) {
+      console.log('[PLT] showProjectedLT=true, issues:', data.map(d => ({
+        id: d.idReadable,
+        projectedLT: d.projectedLeadTimeDays,
+        estimateChanges: d.estimateDateChanges.length,
+      })));
       rows.each(function (issueData) {
         if (!issueData.projectedLeadTimeDays || issueData.projectedLeadTimeDays <= 0) return;
 

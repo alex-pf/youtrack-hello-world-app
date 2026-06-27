@@ -388,6 +388,20 @@ export function parseEstimateDateChanges(
   return result;
 }
 
+// Read the current Estimated Date directly from issue.fields (most reliable source).
+// For DateIssueCustomField, YouTrack returns value as a Unix ms number.
+function getEstimateDateFromFields(issue: Issue): number | null {
+  if (!issue.fields) return null;
+  const field = issue.fields.find(f => {
+    const name = f.projectCustomField?.field?.name?.toLowerCase() ?? '';
+    return name.includes('estimated') || name.includes('due date') || name.includes('deadline');
+  });
+  if (!field) return null;
+  const val = field.value as unknown;
+  if (typeof val === 'number' && val > 0) return val;
+  return null;
+}
+
 export function calculateProjectedLeadTime(
   issueCreatedAt: number,
   estimateDateChanges: EstimateDateChange[]
@@ -430,9 +444,20 @@ export function buildIssueChartData(
     ? parseEstimateDateChanges(issue.id, activities)
     : [];
 
-  const projectedLeadTimeDays = estimateDateChanges.length > 0
-    ? calculateProjectedLeadTime(issue.created ?? Date.now(), estimateDateChanges) ?? undefined
-    : undefined;
+  // Projected Lead Time: prefer current field value (reliable), fall back to activity history.
+  let projectedLeadTimeDays: number | undefined;
+  if (showProjectedLT && issue.created) {
+    const lastChange = estimateDateChanges[estimateDateChanges.length - 1];
+    const estimatedDateMs =
+      getEstimateDateFromFields(issue) ??
+      lastChange?.toDate ??
+      lastChange?.fromDate ??
+      null;
+    if (estimatedDateMs !== null) {
+      const days = (estimatedDateMs - issue.created) / (24 * 60 * 60 * 1000);
+      if (days > 0) projectedLeadTimeDays = days;
+    }
+  }
 
   const totalDays = segments.reduce((sum, s) => sum + s.durationDays, 0);
 
