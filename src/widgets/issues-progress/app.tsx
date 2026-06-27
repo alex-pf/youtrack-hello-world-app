@@ -116,6 +116,12 @@ export default function App({ host }: Props) {
 
         // Load saved config
         const stored = await host.readConfig<Record<string, string>>();
+        // Parse whatever is stored so Configuration gets pre-filled fields
+        // (e.g. description) even when search is not yet set.
+        const parsedConfig = stored ? parseStoredConfig(stored) : null;
+        setConfig(parsedConfig);
+        configRef.current = parsedConfig;
+
         if (!stored?.search) {
           // No config yet — enter configuration mode
           setIsConfiguring(true);
@@ -123,11 +129,7 @@ export default function App({ host }: Props) {
           setIsLoading(false);
           return;
         }
-
-        const parsedConfig = parseStoredConfig(stored);
-        setConfig(parsedConfig);
-        configRef.current = parsedConfig;
-        await fetchData(parsedConfig, false);
+        await fetchData(parsedConfig!, false);
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         setError(msg);
