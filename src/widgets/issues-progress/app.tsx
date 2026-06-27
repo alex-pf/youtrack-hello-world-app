@@ -286,9 +286,8 @@ export default function App({ host }: Props) {
         </button>
       </div>
 
-      {/* Scrollable content area */}
+      {/* Gantt chart — scrollable, takes all remaining space */}
       <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-        {/* Gantt chart */}
         <GanttChart
           data={sortedData}
           statusOrder={config?.statusOrder ?? []}
@@ -298,15 +297,15 @@ export default function App({ host }: Props) {
           showProjectedLT={config?.showProjectedLT ?? false}
           baseUrl={baseUrl}
         />
-
-        {/* Markdown description */}
-        {descriptionHtml && (
-          <div
-            className="ip-description"
-            dangerouslySetInnerHTML={{__html: descriptionHtml}}
-          />
-        )}
       </div>
+
+      {/* Markdown description — fixed below chart, sized to content */}
+      {descriptionHtml && (
+        <div
+          className="ip-description"
+          dangerouslySetInnerHTML={{__html: descriptionHtml}}
+        />
+      )}
 
       {/* Debug: status transition history */}
       {config?.debugMode && (
