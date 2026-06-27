@@ -412,6 +412,11 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
         />
       </div>
 
+      <div style={{marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--ring-line-color)', color: 'var(--ring-secondary-color)', fontSize: '11px', lineHeight: '1.6'}}>
+        <div>Version: <strong>{__APP_VERSION__}</strong></div>
+        <div>Updated: {new Date(__BUILD_TIME__).toLocaleString()}</div>
+      </div>
+
       <ButtonSet>
         <Button primary disabled={!search.trim()} onClick={handleSave}>
           Save
