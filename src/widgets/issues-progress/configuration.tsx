@@ -1,4 +1,10 @@
 import React, {memo, useCallback, useEffect, useRef, useState} from 'react';
+
+function usePrevious<T>(value: T): T | undefined {
+  const ref = useRef<T | undefined>(undefined);
+  useEffect(() => { ref.current = value; });
+  return ref.current;
+}
 import {Size as InputSize} from '@jetbrains/ring-ui-built/components/input/input';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import ButtonSet from '@jetbrains/ring-ui-built/components/button-set/button-set';
@@ -44,9 +50,7 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
   const [isLoadingStates, setIsLoadingStates] = useState(false);
 
-  // Skip the selectedProjectIds effect on the very first render to avoid
-  // double-loading when editing an existing config (mount effect handles that).
-  const isFirstRender = useRef(true);
+  const prevProjectIds = usePrevious(selectedProjectIds);
 
   // On mount: load projects list; if editing existing config, also load states/types
   useEffect(() => {
@@ -69,10 +73,7 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
 
   // When selected projects change, reload states and issue types
   useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
-      return;
-    }
+    if (prevProjectIds === selectedProjectIds) return;
     if (selectedProjectIds.length === 0) {
       setAvailableStates([]);
       setAvailableIssueTypes([]);
@@ -87,8 +88,7 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
         setStatusOrder(prev => prev.filter(s => states.some(st => st.id === s.id)));
       })
       .finally(() => setIsLoadingStates(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedProjectIds]);
+  }, [host, selectedProjectIds, prevProjectIds]);
 
   // QueryAssist data source
   const queryAssistHandler = useCallback(
@@ -388,7 +388,7 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
       {/* ── 5b. Debug Mode Toggle ── */}
       <div style={{marginTop: 8, marginBottom: 8}}>
         <Checkbox
-          label="Отладка (показать историю переходов статусов)"
+          label="Debug (show status transition history)"
           checked={debugMode}
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDebugMode(e.target.checked)}
         />
