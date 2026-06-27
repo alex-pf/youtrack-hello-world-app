@@ -1,9 +1,24 @@
 import {resolve} from 'node:path';
+import {execSync} from 'node:child_process';
 import {defineConfig} from 'vite';
 import {viteStaticCopy} from 'vite-plugin-static-copy';
 import react from '@vitejs/plugin-react';
 
+const gitHash = (() => {
+  try {
+    return execSync('git rev-parse --short HEAD').toString().trim();
+  } catch {
+    return 'unknown';
+  }
+})();
+
+const buildTime = new Date().toISOString();
+
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(gitHash),
+    __BUILD_TIME__: JSON.stringify(buildTime),
+  },
   plugins: [
     react(),
     viteStaticCopy({
