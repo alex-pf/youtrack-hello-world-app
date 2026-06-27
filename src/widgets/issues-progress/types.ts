@@ -51,7 +51,7 @@ export function parseStoredConfig(stored: Record<string, string>): WidgetConfig 
     ltEnabled: stored.ltEnabled === 'true',
     ltSettings: stored.ltSettings ? JSON.parse(stored.ltSettings) : {},
     showEstimateDate: stored.showEstimateDate === 'true',
-    showProjectedLT: stored.showProjectedLT === 'true',
+    showProjectedLT: stored.showProjectedLT !== 'false',
     refreshInterval: stored.refreshInterval ? Number(stored.refreshInterval) : 0,
     debugMode: stored.debugMode === 'true',
   };
