@@ -28,6 +28,19 @@ const STATUS_COLORS = [
   '#00BCD4', '#8BC34A', '#FF5722', '#607D8B', '#E91E63',
 ];
 
+// ─── XSS-safe tooltip builder ─────────────────────────────────────────────────
+function buildTooltipHtml(title: string, rows: { label: string; value: string }[]): string {
+  const escHtml = (s: string) =>
+    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const rowsHtml = rows
+    .map(
+      (r) =>
+        `<div class="ip-gantt-tooltip__row"><span class="ip-gantt-tooltip__label">${escHtml(r.label)}:</span><span>${escHtml(r.value)}</span></div>`
+    )
+    .join('');
+  return `<div class="ip-gantt-tooltip__header">${escHtml(title)}</div>${rowsHtml}`;
+}
+
 export default function GanttChart({
   data,
   statusOrder,
@@ -41,6 +54,7 @@ export default function GanttChart({
   const svgRef = useRef<SVGSVGElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(600);
+  const [debouncedWidth, setDebouncedWidth] = useState(containerWidth);
 
   // ─── Responsive width via ResizeObserver ────────────────────────────────────
   useEffect(() => {
@@ -52,6 +66,14 @@ export default function GanttChart({
     observer.observe(containerRef.current);
     return () => observer.disconnect();
   }, []);
+
+  // ─── Debounce containerWidth (150ms) to avoid thrashing D3 on every resize ──
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedWidth(containerWidth);
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [containerWidth]);
 
   // ─── D3 render ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -66,25 +88,12 @@ export default function GanttChart({
 
     const showTooltip = (event: MouseEvent, change: EstimateDateChange, tickNum: number) => {
       if (!tooltipEl) return;
-      tooltipEl.innerHTML = `
-        <div class="ip-gantt-tooltip__header">Estimate change #${tickNum}</div>
-        <div class="ip-gantt-tooltip__row">
-          <span class="ip-gantt-tooltip__label">Date:</span>
-          <span>${new Date(change.changedAt).toLocaleString()}</span>
-        </div>
-        <div class="ip-gantt-tooltip__row">
-          <span class="ip-gantt-tooltip__label">Was:</span>
-          <span>${formatDate(change.fromDate)}</span>
-        </div>
-        <div class="ip-gantt-tooltip__row">
-          <span class="ip-gantt-tooltip__label">Became:</span>
-          <span>${formatDate(change.toDate)}</span>
-        </div>
-        <div class="ip-gantt-tooltip__row">
-          <span class="ip-gantt-tooltip__label">By:</span>
-          <span>${change.author}</span>
-        </div>
-      `;
+      tooltipEl.innerHTML = buildTooltipHtml(`Estimate change #${tickNum}`, [
+        { label: 'Date', value: new Date(change.changedAt).toLocaleString() },
+        { label: 'Was', value: formatDate(change.fromDate) },
+        { label: 'Became', value: formatDate(change.toDate) },
+        { label: 'By', value: change.author },
+      ]);
       tooltipEl.style.display = 'block';
       moveTooltip(event);
     };
@@ -115,7 +124,7 @@ export default function GanttChart({
     const svg = d3.select(svgRef.current);
     svg.selectAll('*').remove();
 
-    const effectiveWidth = Math.max(containerWidth, MIN_CHART_WIDTH);
+    const effectiveWidth = Math.max(debouncedWidth, MIN_CHART_WIDTH);
     const chartWidth = effectiveWidth - MARGIN.left - MARGIN.right;
     const chartHeight = data.length * ROW_HEIGHT;
     const totalHeight = chartHeight + MARGIN.top + MARGIN.bottom;
@@ -242,9 +251,12 @@ export default function GanttChart({
         if (issueData.estimateDateChanges.length === 0) return;
 
         const rowG = d3.select(this);
-        const issueCreatedAt = issueData.totalDays > 0
-          ? Date.now() - issueData.totalDays * 24 * 60 * 60 * 1000
-          : Date.now();
+        // Use issueData.createdAt if available; fall back to deriving from totalDays
+        const issueCreatedAt = issueData.createdAt ?? (
+          issueData.totalDays > 0
+            ? Date.now() - issueData.totalDays * 24 * 60 * 60 * 1000
+            : Date.now()
+        );
 
         issueData.estimateDateChanges.forEach((change, idx) => {
           const daysSinceCreation = (change.changedAt - issueCreatedAt) / (24 * 60 * 60 * 1000);
@@ -309,27 +321,19 @@ export default function GanttChart({
       ) => {
         if (!tooltipEl) return;
         const weeksStr = days > 28 ? ` (${Math.round(days / 7)} weeks)` : '';
-        tooltipEl.innerHTML = `
-          <div class="ip-gantt-tooltip__header">${label} Threshold</div>
-          ${issueType ? `<div class="ip-gantt-tooltip__row">
-            <span class="ip-gantt-tooltip__label">Type:</span>
-            <span>${issueType}</span>
-          </div>` : ''}
-          <div class="ip-gantt-tooltip__row">
-            <span class="ip-gantt-tooltip__label">${label}:</span>
-            <span>${days} days${weeksStr}</span>
-          </div>
-        `;
+        const rows: { label: string; value: string }[] = [];
+        if (issueType) {
+          rows.push({ label: 'Type', value: issueType });
+        }
+        rows.push({ label, value: `${days} days${weeksStr}` });
+        tooltipEl.innerHTML = buildTooltipHtml(`${label} Threshold`, rows);
         tooltipEl.style.display = 'block';
         moveTooltip(event);
       };
 
       rows.each(function (issueData) {
         const typeName = issueData.issueType ?? '';
-        const lt =
-          ltSettings[typeName] ??
-          ltSettings[''] ??
-          ltSettings[Object.keys(ltSettings)[0]];
+        const lt = ltSettings[typeName] ?? ltSettings[''];
         if (!lt) return;
 
         const rowG = d3.select(this);
@@ -392,11 +396,6 @@ export default function GanttChart({
     }
 
     if (showProjectedLT) {
-      console.log('[PLT] showProjectedLT=true, issues:', data.map(d => ({
-        id: d.idReadable,
-        projectedLT: d.projectedLeadTimeDays,
-        estimateChanges: d.estimateDateChanges.length,
-      })));
       rows.each(function (issueData) {
         if (!issueData.projectedLeadTimeDays || issueData.projectedLeadTimeDays <= 0) return;
 
@@ -451,17 +450,10 @@ export default function GanttChart({
           .on('mouseover', function (event: MouseEvent) {
             if (!tooltipEl) return;
             const dateStr = capturedDate ? new Date(capturedDate).toLocaleDateString() : '—';
-            tooltipEl.innerHTML = `
-              <div class="ip-gantt-tooltip__header">Projected Lead Time</div>
-              <div class="ip-gantt-tooltip__row">
-                <span class="ip-gantt-tooltip__label">Days:</span>
-                <span>${capturedDays.toFixed(1)}</span>
-              </div>
-              <div class="ip-gantt-tooltip__row">
-                <span class="ip-gantt-tooltip__label">Estimated Date:</span>
-                <span>${dateStr}</span>
-              </div>
-            `;
+            tooltipEl.innerHTML = buildTooltipHtml('Projected Lead Time', [
+              { label: 'Days', value: capturedDays.toFixed(1) },
+              { label: 'Estimated Date', value: dateStr },
+            ]);
             tooltipEl.style.display = 'block';
             moveTooltip(event);
           })
@@ -482,6 +474,10 @@ export default function GanttChart({
         .attr('y', y + ROW_PADDING)
         .attr('width', MARGIN.left - 4)
         .attr('height', BAR_HEIGHT)
+        // `as any` is required because D3's TypeScript types do not include the
+        // xhtml: namespace prefix needed to render an <a> element inside SVG
+        // foreignObject. The xhtml: prefix is the correct W3C way to embed HTML
+        // elements in SVG, but @types/d3 only exposes standard SVG element names.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .append('xhtml:a' as any)
         .attr('href', issueUrl)
@@ -501,7 +497,7 @@ export default function GanttChart({
         .text(issueData.idReadable);
     });
 
-  }, [data, containerWidth, ltEnabled, ltSettings, showEstimateDate, showProjectedLT, statusOrder, baseUrl]);
+  }, [data, debouncedWidth, ltEnabled, ltSettings, showEstimateDate, showProjectedLT, statusOrder, baseUrl]);
 
   // ─── Legend ──────────────────────────────────────────────────────────────────
   if (data.length === 0) {
