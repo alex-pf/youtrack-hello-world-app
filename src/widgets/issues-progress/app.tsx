@@ -296,7 +296,7 @@ export default function App({ host }: Props) {
             opacity: isRefreshing ? 0.5 : 1,
           }}
         >
-          Refresh
+          Обновить
         </button>
       </div>
 
