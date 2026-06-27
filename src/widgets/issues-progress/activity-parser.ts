@@ -388,6 +388,17 @@ export function parseEstimateDateChanges(
   return result;
 }
 
+export function calculateProjectedLeadTime(
+  issueCreatedAt: number,
+  estimateDateChanges: EstimateDateChange[]
+): number | null {
+  if (estimateDateChanges.length === 0) return null;
+  const lastChange = estimateDateChanges[estimateDateChanges.length - 1];
+  const currentEstimatedDate = lastChange.toDate ?? lastChange.fromDate;
+  if (currentEstimatedDate === null) return null;
+  return (currentEstimatedDate - issueCreatedAt) / (24 * 60 * 60 * 1000);
+}
+
 // ─── Main Aggregator ──────────────────────────────────────────────────────────
 
 /**
@@ -397,13 +408,15 @@ export function parseEstimateDateChanges(
  * @param activities - Activity items from loadIssueActivities()
  * @param statusOrder - Ordered statuses from widget config
  * @param showEstimateDate - Whether to parse estimate date history
+ * @param showProjectedLT - Whether to show the projected lead time marker
  * @returns IssueChartData ready for the Gantt chart
  */
 export function buildIssueChartData(
   issue: Issue,
   activities: IssueActivityItem[],
   statusOrder: StatusOrderItem[],
-  showEstimateDate: boolean
+  showEstimateDate: boolean,
+  showProjectedLT: boolean = false
 ): IssueChartData {
   const segments = parseStateSegments(
     issue.id,
@@ -412,9 +425,14 @@ export function buildIssueChartData(
     issue.created ?? Date.now()
   );
 
-  const estimateDateChanges = showEstimateDate
+  // Parse estimate date changes when needed by either flag
+  const estimateDateChanges = (showEstimateDate || showProjectedLT)
     ? parseEstimateDateChanges(issue.id, activities)
     : [];
+
+  const projectedLeadTimeDays = estimateDateChanges.length > 0
+    ? calculateProjectedLeadTime(issue.created ?? Date.now(), estimateDateChanges) ?? undefined
+    : undefined;
 
   const totalDays = segments.reduce((sum, s) => sum + s.durationDays, 0);
 
@@ -440,6 +458,7 @@ export function buildIssueChartData(
     segments,
     estimateDateChanges,
     totalDays,
+    projectedLeadTimeDays,
   };
 }
 
@@ -451,19 +470,21 @@ export function buildIssueChartData(
  * @param activitiesMap - Map of issueId → activities from loadActivitiesBatch()
  * @param statusOrder - Ordered statuses from widget config
  * @param showEstimateDate - Whether to parse estimate date history
+ * @param showProjectedLT - Whether to show the projected lead time marker
  * @returns Array of IssueChartData sorted by totalDays descending
  */
 export function buildChartData(
   issues: Issue[],
   activitiesMap: Map<string, IssueActivityItem[]>,
   statusOrder: StatusOrderItem[],
-  showEstimateDate: boolean
+  showEstimateDate: boolean,
+  showProjectedLT: boolean = false
 ): IssueChartData[] {
   const chartData: IssueChartData[] = [];
 
   for (const issue of issues) {
     const activities = activitiesMap.get(issue.id) ?? [];
-    const data = buildIssueChartData(issue, activities, statusOrder, showEstimateDate);
+    const data = buildIssueChartData(issue, activities, statusOrder, showEstimateDate, showProjectedLT);
     // Include issues even with no segments (they'll show as empty rows)
     chartData.push(data);
   }
