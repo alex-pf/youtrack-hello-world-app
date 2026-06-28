@@ -46,7 +46,11 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
   const [showProjectedLT, setShowProjectedLT] = useState(config?.showProjectedLT ?? false);
   const [refreshInterval, setRefreshInterval] = useState(config?.refreshInterval ?? 0);
   const [debugMode, setDebugMode] = useState(config?.debugMode ?? false);
-  const [description, setDescription] = useState(config?.description ?? '');
+  const DESCRIPTION_DRAFT_KEY = 'ip-widget-description-draft';
+  const [description, setDescription] = useState(() => {
+    if (config?.description) return config.description;
+    try { return sessionStorage.getItem(DESCRIPTION_DRAFT_KEY) ?? ''; } catch { return ''; }
+  });
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
   const [isLoadingStates, setIsLoadingStates] = useState(false);
 
@@ -178,6 +182,7 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
       description,
     };
     await host.storeConfig(serializeConfig(newConfig));
+    try { sessionStorage.removeItem(DESCRIPTION_DRAFT_KEY); } catch { /* ignore */ }
     onSave(newConfig);
   };
 
@@ -413,7 +418,10 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
         <span className="ip-section-label">Description (Markdown)</span>
         <textarea
           value={description}
-          onChange={e => setDescription(e.target.value)}
+          onChange={e => {
+            setDescription(e.target.value);
+            try { sessionStorage.setItem(DESCRIPTION_DRAFT_KEY, e.target.value); } catch { /* ignore */ }
+          }}
           placeholder="Напишите описание для пользователей виджета. Поддерживается **Markdown**."
           rows={5}
           style={{
