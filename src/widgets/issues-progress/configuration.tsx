@@ -48,8 +48,14 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
   const [debugMode, setDebugMode] = useState(config?.debugMode ?? false);
   const DESCRIPTION_DRAFT_KEY = 'ip-widget-description-draft';
   const [description, setDescription] = useState(() => {
-    if (config?.description) return config.description;
-    try { return sessionStorage.getItem(DESCRIPTION_DRAFT_KEY) ?? ''; } catch { return ''; }
+    const fromConfig = config?.description ?? '';
+    let fromSession = '';
+    try { fromSession = sessionStorage.getItem(DESCRIPTION_DRAFT_KEY) ?? ''; } catch { /* ignore */ }
+    console.log('[DEBUG init] config?.description:', JSON.stringify(fromConfig));
+    console.log('[DEBUG init] sessionStorage draft:', JSON.stringify(fromSession));
+    const result = fromConfig || fromSession;
+    console.log('[DEBUG init] description initialized to:', JSON.stringify(result));
+    return result;
   });
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
   const [isLoadingStates, setIsLoadingStates] = useState(false);
@@ -181,8 +187,15 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
       debugMode,
       description,
     };
-    await host.storeConfig(serializeConfig(newConfig));
-    try { sessionStorage.removeItem(DESCRIPTION_DRAFT_KEY); } catch { /* ignore */ }
+    const serialized = serializeConfig(newConfig);
+    console.log('[DEBUG save] description state:', JSON.stringify(description));
+    console.log('[DEBUG save] serialized.description:', JSON.stringify(serialized.description));
+    await host.storeConfig(serialized);
+    console.log('[DEBUG save] storeConfig done');
+    try {
+      sessionStorage.setItem(DESCRIPTION_DRAFT_KEY, description);
+      console.log('[DEBUG save] sessionStorage after save:', JSON.stringify(sessionStorage.getItem(DESCRIPTION_DRAFT_KEY)));
+    } catch { /* ignore */ }
     onSave(newConfig);
   };
 
