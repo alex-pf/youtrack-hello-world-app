@@ -116,11 +116,9 @@ export default function App({ host }: Props) {
 
         // Load saved config
         const stored = await host.readConfig<Record<string, string>>();
-        console.log('[DEBUG readConfig] raw stored:', JSON.stringify(stored));
         // Parse whatever is stored so Configuration gets pre-filled fields
         // (e.g. description) even when search is not yet set.
         const parsedConfig = stored ? parseStoredConfig(stored) : null;
-        console.log('[DEBUG readConfig] parsedConfig.description:', JSON.stringify(parsedConfig?.description));
         setConfig(parsedConfig);
         configRef.current = parsedConfig;
 

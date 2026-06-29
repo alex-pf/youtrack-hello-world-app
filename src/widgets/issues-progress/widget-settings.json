@@ -9,6 +9,9 @@
     "ltEnabled": { "type": "string" },
     "ltSettings": { "type": "string" },
     "showEstimateDate": { "type": "string" },
+    "showProjectedLT": { "type": "string" },
+    "debugMode": { "type": "string" },
+    "description": { "type": "string" },
     "refreshInterval": { "type": "integer" }
   }
 }

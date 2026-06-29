@@ -46,17 +46,7 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
   const [showProjectedLT, setShowProjectedLT] = useState(config?.showProjectedLT ?? false);
   const [refreshInterval, setRefreshInterval] = useState(config?.refreshInterval ?? 0);
   const [debugMode, setDebugMode] = useState(config?.debugMode ?? false);
-  const DESCRIPTION_DRAFT_KEY = 'ip-widget-description-draft';
-  const [description, setDescription] = useState(() => {
-    const fromConfig = config?.description ?? '';
-    let fromSession = '';
-    try { fromSession = sessionStorage.getItem(DESCRIPTION_DRAFT_KEY) ?? ''; } catch { /* ignore */ }
-    console.log('[DEBUG init] config?.description:', JSON.stringify(fromConfig));
-    console.log('[DEBUG init] sessionStorage draft:', JSON.stringify(fromSession));
-    const result = fromConfig || fromSession;
-    console.log('[DEBUG init] description initialized to:', JSON.stringify(result));
-    return result;
-  });
+  const [description, setDescription] = useState(config?.description ?? '');
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
   const [isLoadingStates, setIsLoadingStates] = useState(false);
 
@@ -187,15 +177,7 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
       debugMode,
       description,
     };
-    const serialized = serializeConfig(newConfig);
-    console.log('[DEBUG save] description state:', JSON.stringify(description));
-    console.log('[DEBUG save] serialized.description:', JSON.stringify(serialized.description));
-    await host.storeConfig(serialized);
-    console.log('[DEBUG save] storeConfig done');
-    try {
-      sessionStorage.setItem(DESCRIPTION_DRAFT_KEY, description);
-      console.log('[DEBUG save] sessionStorage after save:', JSON.stringify(sessionStorage.getItem(DESCRIPTION_DRAFT_KEY)));
-    } catch { /* ignore */ }
+    await host.storeConfig(serializeConfig(newConfig));
     onSave(newConfig);
   };
 
@@ -431,10 +413,7 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
         <span className="ip-section-label">Description (Markdown)</span>
         <textarea
           value={description}
-          onChange={e => {
-            setDescription(e.target.value);
-            try { sessionStorage.setItem(DESCRIPTION_DRAFT_KEY, e.target.value); } catch { /* ignore */ }
-          }}
+          onChange={e => setDescription(e.target.value)}
           placeholder="Напишите описание для пользователей виджета. Поддерживается **Markdown**."
           rows={5}
           style={{
