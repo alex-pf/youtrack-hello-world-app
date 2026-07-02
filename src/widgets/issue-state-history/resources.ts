@@ -3,11 +3,19 @@ import type {
   ProjectInfo,
   ProjectCustomFieldInfo,
   StatusOrderItem,
+  Issue,
+  IssueActivityItem,
+  ActivityPage,
 } from './types';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const MAX_PROJECTS = 200;
+const ISSUES_PACK_SIZE = 50;
+const ACTIVITY_CATEGORIES = 'CustomFieldCategory,IssueResolvedCategory';
+const ACTIVITIES_PAGE_SIZE = 1000;
+// Delay between batched activity requests to avoid rate-limiting (ms)
+const ACTIVITY_BATCH_DELAY_MS = 100;
 
 // ─── Field selector strings ──────────────────────────────────────────────────
 
@@ -16,6 +24,18 @@ const PROJECT_FIELDS = 'id,name,shortName';
 const PROJECT_CUSTOM_FIELD_FIELDS =
   'id,field(id,name,fieldType(id,valueType)),' +
   'bundle(id,values(id,name,ordinal,isResolved,color(id,background,foreground)))';
+
+const ISSUE_FIELDS = 'id,idReadable,summary,resolved,created,updated';
+
+const ACTIVITY_ITEM_FIELDS =
+  'id,timestamp,author(id,name,login),category(id),' +
+  'field(id,name),' +
+  'added(id,name,presentation,value),' +
+  'removed(id,name,presentation,value)';
+
+// The activitiesPage endpoint returns ActivityCursorPage { activities, cursor, hasAfter }.
+// We must wrap the item fields in activities(...) and also request cursor and hasAfter.
+const ACTIVITY_FIELDS = `activities(${ACTIVITY_ITEM_FIELDS}),cursor,hasAfter`;
 
 // ─── Query Assist ────────────────────────────────────────────────────────────
 
@@ -122,4 +142,142 @@ export async function loadProjectStates(
   }
 
   return Array.from(allStates.values());
+}
+
+// ─── Issues ──────────────────────────────────────────────────────────────────
+
+export async function loadIssues(
+  host: EmbeddableWidgetAPI,
+  search: string,
+  skip = 0
+): Promise<Issue[]> {
+  return host.fetchYouTrack<Issue[]>('issues', {
+    query: {
+      fields: ISSUE_FIELDS,
+      query: search || '',
+      $top: String(ISSUES_PACK_SIZE),
+      $skip: String(skip),
+    },
+  });
+}
+
+export async function loadIssuesCount(
+  host: EmbeddableWidgetAPI,
+  search: string
+): Promise<number> {
+  const result = await host.fetchYouTrack<{ count: number }>('issuesGetter/count', {
+    method: 'POST',
+    query: { fields: 'count' },
+    body: { folder: null, query: search || null },
+  });
+  return result?.count ?? 0;
+}
+
+// ─── Issue Activities ────────────────────────────────────────────────────────
+
+export async function loadIssueActivities(
+  host: EmbeddableWidgetAPI,
+  issueId: string
+): Promise<IssueActivityItem[]> {
+  const page = await host.fetchYouTrack<ActivityPage>(
+    `issues/${issueId}/activitiesPage`,
+    {
+      query: {
+        fields: ACTIVITY_FIELDS,
+        categories: ACTIVITY_CATEGORIES,
+        $top: ACTIVITIES_PAGE_SIZE,
+      },
+    }
+  );
+  if (page?.hasAfter === true) {
+    console.warn(
+      `[issue-state-history] Activity page for issue ${issueId} has more entries beyond the first ${ACTIVITIES_PAGE_SIZE}. ` +
+      'Some activity history may be truncated.'
+    );
+  }
+  return page?.activities ?? [];
+}
+
+// ─── Batch Activity Loading ──────────────────────────────────────────────────
+
+/**
+ * Loads activities for multiple issues sequentially with a delay between
+ * requests to avoid hitting YouTrack rate limits.
+ *
+ * @param host - EmbeddableWidgetAPI instance
+ * @param issueIds - Array of internal issue IDs
+ * @param onProgress - Optional callback called after each issue is loaded (loaded, total)
+ * @returns Map of issueId → activities array
+ */
+export async function loadActivitiesBatch(
+  host: EmbeddableWidgetAPI,
+  issueIds: string[],
+  onProgress?: (loaded: number, total: number) => void
+): Promise<Map<string, IssueActivityItem[]>> {
+  const result = new Map<string, IssueActivityItem[]>();
+
+  for (let i = 0; i < issueIds.length; i++) {
+    const issueId = issueIds[i];
+    try {
+      const activities = await loadIssueActivities(host, issueId);
+      result.set(issueId, activities);
+    } catch (e) {
+      // On error for a single issue, store empty array and continue
+      console.warn(`Failed to load activities for issue ${issueId}:`, e);
+      result.set(issueId, []);
+    }
+
+    onProgress?.(i + 1, issueIds.length);
+
+    // Throttle: wait between requests (skip delay after last item)
+    if (i < issueIds.length - 1) {
+      await new Promise<void>((resolve) => setTimeout(resolve, ACTIVITY_BATCH_DELAY_MS));
+    }
+  }
+
+  return result;
+}
+
+// ─── Orchestrated Data Loading ────────────────────────────────────────────────
+
+/**
+ * Loads all issues matching the search query, then loads their activity histories
+ * in batches. Returns both the raw issues and the activities map.
+ *
+ * This is the main data loading function called by app.tsx.
+ *
+ * @param host - EmbeddableWidgetAPI instance
+ * @param search - YouTrack search query string
+ * @param onProgress - Optional progress callback (phase, loaded, total)
+ * @returns Object with issues array and activitiesMap
+ */
+export async function loadIssuesWithActivities(
+  host: EmbeddableWidgetAPI,
+  search: string,
+  onProgress?: (phase: 'issues' | 'activities', loaded: number, total: number) => void
+): Promise<{ issues: Issue[]; activitiesMap: Map<string, IssueActivityItem[]> }> {
+  // Phase 1: Load all issues (paginated)
+  const allIssues: Issue[] = [];
+  let skip = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const batch = await loadIssues(host, search, skip);
+    allIssues.push(...batch);
+    skip += batch.length;
+    hasMore = batch.length === ISSUES_PACK_SIZE;
+    onProgress?.('issues', allIssues.length, -1);
+  }
+
+  if (allIssues.length === 0) {
+    return { issues: [], activitiesMap: new Map() };
+  }
+
+  // Phase 2: Load activities for all issues in batches
+  const issueIds = allIssues.map((i) => i.id);
+  const activitiesMap = await loadActivitiesBatch(host, issueIds, (loaded, total) => {
+    onProgress?.('activities', loaded, total);
+  });
+
+  return { issues: allIssues, activitiesMap };
 }
