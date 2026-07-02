@@ -186,6 +186,19 @@
   padding-left: 8px;
 }
 
+.ish-debug__estimate {
+  padding-left: 8px;
+  margin-bottom: 4px;
+  color: var(--ring-secondary-color);
+}
+
+.ish-debug__estimate code {
+  color: var(--ring-text-color);
+  background: var(--ring-selected-background-color, rgba(128,128,128,0.15));
+  padding: 0 3px;
+  border-radius: 2px;
+}
+
 .ish-debug__transitions {
   list-style: none;
   margin: 0;
