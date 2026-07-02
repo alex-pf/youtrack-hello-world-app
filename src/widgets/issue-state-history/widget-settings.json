@@ -8,6 +8,7 @@
     "statusOrder": { "type": "string" },
     "debugMode": { "type": "string" },
     "description": { "type": "string" },
-    "refreshInterval": { "type": "integer" }
+    "refreshInterval": { "type": "integer" },
+    "gridStep": { "type": "string" }
   }
 }

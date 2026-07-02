@@ -5,6 +5,9 @@ export interface StatusOrderItem {
   color?: string;
 }
 
+// Grid step controlling the X-axis tick/gridline spacing on the Gantt chart.
+export type GridStep = 'day' | 'week' | 'month';
+
 // In-memory widget config (rich objects)
 export interface WidgetConfig {
   search: string;
@@ -14,6 +17,10 @@ export interface WidgetConfig {
   refreshInterval: number;      // minutes; 0 = no auto-refresh
   debugMode: boolean;           // show status transition history below chart
   description?: string;         // markdown text shown below chart
+  // X-axis grid/tick step. Defaults to 'day' when not set (finest granularity,
+  // matches the widget's original calendar-date behavior before this setting
+  // existed, so previously-saved configs keep looking the same).
+  gridStep: GridStep;
 }
 
 // Stored widget config (flat primitives for host.storeConfig)
@@ -25,6 +32,7 @@ export interface StoredWidgetConfig {
   refreshInterval?: number;
   debugMode?: string;           // 'true' | 'false'
   description?: string;
+  gridStep?: string;            // 'day' | 'week' | 'month'
 }
 
 export function parseStoredConfig(stored: Record<string, string>): WidgetConfig {
@@ -36,6 +44,7 @@ export function parseStoredConfig(stored: Record<string, string>): WidgetConfig 
     refreshInterval: stored.refreshInterval ? Number(stored.refreshInterval) : 0,
     debugMode: stored.debugMode === 'true',
     description: stored.description ?? '',
+    gridStep: (stored.gridStep as GridStep) || 'day',
   };
 }
 
@@ -48,6 +57,7 @@ export function serializeConfig(config: WidgetConfig): StoredWidgetConfig {
     refreshInterval: config.refreshInterval,
     debugMode: String(config.debugMode),
     description: config.description ?? '',
+    gridStep: config.gridStep,
   };
 }
 

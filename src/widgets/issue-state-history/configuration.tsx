@@ -14,7 +14,7 @@ import QueryAssist from '@jetbrains/ring-ui-built/components/query-assist/query-
 import type {QueryAssistRequestParams} from '@jetbrains/ring-ui-built/components/query-assist/query-assist';
 import Checkbox from '@jetbrains/ring-ui-built/components/checkbox/checkbox';
 import type {EmbeddableWidgetAPI} from '../../../@types/globals';
-import type {WidgetConfig, StatusOrderItem, ProjectInfo} from './types';
+import type {WidgetConfig, StatusOrderItem, ProjectInfo, GridStep} from './types';
 import {serializeConfig} from './types';
 import {loadProjects, loadProjectStates, queryAssistDataSource} from './resources';
 
@@ -33,6 +33,12 @@ const REFRESH_OPTIONS: SelectItem[] = [
   {key: 120, label: '2 hours'},
 ];
 
+const GRID_STEP_OPTIONS: SelectItem[] = [
+  {key: 'day', label: 'День'},
+  {key: 'week', label: 'Неделя'},
+  {key: 'month', label: 'Месяц'},
+];
+
 const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel}) => {
   const [search, setSearch] = useState(config?.search ?? '');
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>(config?.projects ?? []);
@@ -42,6 +48,7 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
   const [refreshInterval, setRefreshInterval] = useState(config?.refreshInterval ?? 0);
   const [debugMode, setDebugMode] = useState(config?.debugMode ?? false);
   const [description, setDescription] = useState(config?.description ?? '');
+  const [gridStep, setGridStep] = useState<GridStep>(config?.gridStep ?? 'day');
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
   const [isLoadingStates, setIsLoadingStates] = useState(false);
 
@@ -149,6 +156,7 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
       refreshInterval,
       debugMode,
       description,
+      gridStep,
     };
     await host.storeConfig(serializeConfig(newConfig));
     onSave(newConfig);
@@ -320,6 +328,20 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
           selected={REFRESH_OPTIONS.find(o => o.key === refreshInterval)}
           onChange={(item: SelectItem | null) =>
             setRefreshInterval((item?.key as number) ?? 0)
+          }
+        />
+      </div>
+
+      {/* ── 6. Grid Step ── */}
+      <div style={{marginTop: 12, marginBottom: 16}}>
+        <span className="ish-section-label">Шаг сетки</span>
+        <Select
+          label="Grid step"
+          size={InputSize.FULL}
+          data={GRID_STEP_OPTIONS}
+          selected={GRID_STEP_OPTIONS.find(o => o.key === gridStep)}
+          onChange={(item: SelectItem | null) =>
+            setGridStep((item?.key as GridStep) ?? 'day')
           }
         />
       </div>
