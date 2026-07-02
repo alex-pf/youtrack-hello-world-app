@@ -38,12 +38,47 @@
   white-space: nowrap;
 }
 
-/* ─── Scroll container ────────────────────────────────────────────────────── */
-.ish-gantt-scroll {
+/* ─── Vertical scroll owner ──────────────────────────────────────────────────
+   This single element owns vertical scrolling for BOTH the frozen labels
+   pane and the scrollable chart pane, so they always scroll together as one
+   unit. Neither child pane scrolls vertically on its own — see
+   .ish-gantt-panes and .ish-gantt-scroll below. */
+.ish-gantt-vscroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  position: relative;
+}
+
+/* ─── Panes row: frozen labels (left) + scrollable chart (right) ───────────── */
+.ish-gantt-panes {
+  display: flex;
+  align-items: flex-start;
+}
+
+/* ─── Frozen labels pane ──────────────────────────────────────────────────── */
+.ish-gantt-labels-pane {
+  flex-shrink: 0;
+  overflow: visible;
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--ring-content-background-color, transparent);
+}
+
+.ish-gantt-labels-svg {
+  display: block;
+}
+
+/* ─── Scrollable chart pane: horizontal scroll only; vertical scroll happens
+   one level up at .ish-gantt-vscroll, so this must not scroll vertically
+   itself (avoids nested/double scrollbars on the same axis). ──────────────── */
+.ish-gantt-scroll {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
   position: relative;
 }
 
@@ -135,7 +170,7 @@
 }
 
 /* ─── Issue ID link hover ─────────────────────────────────────────────────── */
-.ish-gantt-svg foreignObject a:hover {
+.ish-gantt-labels-svg foreignObject a:hover {
   text-decoration: underline !important;
   color: var(--ring-link-hover-color) !important;
 }

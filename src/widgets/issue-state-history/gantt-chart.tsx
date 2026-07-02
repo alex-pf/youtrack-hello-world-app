@@ -10,11 +10,25 @@ interface GanttChartProps {
 }
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
-const MARGIN = { top: 20, right: 20, bottom: 40, left: 110 };
+// Width of the frozen (non-scrolling) labels pane on the left. Previously this
+// was MARGIN.left inside a single SVG; now it sizes its own standalone pane.
+const LABELS_WIDTH = 110;
+// Small internal left margin inside the chart SVG itself (room for the first
+// axis tick label / grid line not to butt up against the pane edge).
+const MARGIN = { top: 20, right: 20, bottom: 40, left: 8 };
 const ROW_HEIGHT = 28;
 const ROW_PADDING = 4;
 const BAR_HEIGHT = ROW_HEIGHT - ROW_PADDING * 2;
 const MIN_CHART_WIDTH = 400;
+// Minimum horizontal pixels allotted per calendar day in the scrollable chart
+// pane. Chosen so that date tick labels ("01 Jan 26") formatted at typical
+// tick density (one tick roughly every 90px, see tickCount below) remain
+// legible without overlapping, while keeping short date ranges (a few weeks)
+// from becoming needlessly wide. At 12px/day, a ~7-day tick spacing yields
+// ~84px between ticks, close to the 90px axis label spacing used elsewhere.
+// This is a heuristic and may need Lead/design tuning once tested against
+// real multi-month date ranges.
+const MIN_PX_PER_DAY = 12;
 
 // ─── Color palette for statuses (fallback if no color from API) ───────────────
 const STATUS_COLORS = [
@@ -47,7 +61,9 @@ function buildTooltipHtml(title: string, rows: { label: string; value: string }[
 
 export default function GanttChart({ data, statusOrder, baseUrl }: GanttChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  const labelsSvgRef = useRef<SVGSVGElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(600);
   const [debouncedWidth, setDebouncedWidth] = useState(containerWidth);
@@ -73,7 +89,7 @@ export default function GanttChart({ data, statusOrder, baseUrl }: GanttChartPro
 
   // ─── D3 render ──────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!svgRef.current || data.length === 0) return;
+    if (!svgRef.current || !labelsSvgRef.current || data.length === 0) return;
 
     const tooltipEl = tooltipRef.current;
     const containerEl = containerRef.current;
@@ -119,22 +135,13 @@ export default function GanttChart({ data, statusOrder, baseUrl }: GanttChartPro
 
     const svg = d3.select(svgRef.current);
     svg.selectAll('*').remove();
+    const labelsSvg = d3.select(labelsSvgRef.current);
+    labelsSvg.selectAll('*').remove();
 
-    const effectiveWidth = Math.max(debouncedWidth, MIN_CHART_WIDTH);
-    const chartWidth = effectiveWidth - MARGIN.left - MARGIN.right;
     const chartHeight = data.length * ROW_HEIGHT;
     const totalHeight = chartHeight + MARGIN.top + MARGIN.bottom;
 
-    svg
-      .attr('width', effectiveWidth)
-      .attr('height', totalHeight)
-      .attr('aria-label', `Issue state history chart: ${data.length} issues`);
-
-    const g = svg
-      .append('g')
-      .attr('transform', `translate(${MARGIN.left},${MARGIN.top})`);
-
-    // ─── X scale (calendar dates) ───────────────────────────────────────────
+    // ─── X domain (calendar dates) ──────────────────────────────────────────
     const minStart = d3.min(data, (d) => d.overallStart) ?? Date.now();
     const maxEnd = d3.max(data, (d) => d.overallEnd) ?? Date.now();
     // Pad the domain by ~3% of the range on each side (minimum 1 day) so bars
@@ -142,16 +149,95 @@ export default function GanttChart({ data, statusOrder, baseUrl }: GanttChartPro
     const rangeMs = Math.max(maxEnd - minStart, DAY_MS);
     const padMs = Math.max(rangeMs * 0.03, DAY_MS);
     const xDomain: [Date, Date] = [new Date(minStart - padMs), new Date(maxEnd + padMs)];
-    const xScale = d3.scaleTime().domain(xDomain).range([0, chartWidth]);
+    const domainDays = (xDomain[1].getTime() - xDomain[0].getTime()) / DAY_MS;
 
-    // ─── Y scale (issues) ────────────────────────────────────────────────────
+    // ─── Chart pane width: driven by date range, never narrower than the
+    // available scroll-pane space (containerWidth minus the frozen labels
+    // pane and the chart's own left/right margins). This is what makes the
+    // chart overflow (and the horizontal scrollbar appear) when the date
+    // range is wide, instead of always being compressed to fit. ───────────
+    const availableWidth = Math.max(containerWidth - LABELS_WIDTH, MIN_CHART_WIDTH - LABELS_WIDTH);
+    const chartInnerWidth = Math.max(domainDays * MIN_PX_PER_DAY, availableWidth - MARGIN.left - MARGIN.right);
+    const svgWidth = chartInnerWidth + MARGIN.left + MARGIN.right;
+
+    const xScale = d3.scaleTime().domain(xDomain).range([0, chartInnerWidth]);
+
+    // ─── Y scale (issues) — shared between labels pane and chart pane ──────
     const yScale = d3.scaleBand()
       .domain(data.map((d) => d.issueId))
       .range([0, chartHeight])
       .padding(0);
 
+    // ─── Labels pane (frozen, no horizontal scroll) ─────────────────────────
+    labelsSvg
+      .attr('width', LABELS_WIDTH)
+      .attr('height', totalHeight)
+      .attr('aria-label', `Issue labels: ${data.length} issues`);
+
+    const labelsG = labelsSvg
+      .append('g')
+      .attr('transform', `translate(0,${MARGIN.top})`);
+
+    data.forEach((issueData) => {
+      const y = yScale(issueData.issueId) ?? 0;
+      const issueUrl = baseUrl ? `${baseUrl}/issue/${issueData.idReadable}` : undefined;
+
+      const fo = labelsG.append('foreignObject')
+        .attr('x', 0)
+        .attr('y', y + ROW_PADDING)
+        .attr('width', LABELS_WIDTH - 4)
+        .attr('height', BAR_HEIGHT);
+
+      if (issueUrl) {
+        // `as any` is required because D3's TypeScript types do not include the
+        // xhtml: namespace prefix needed to render an <a> element inside SVG
+        // foreignObject. The xhtml: prefix is the correct W3C way to embed HTML
+        // elements in SVG, but @types/d3 only exposes standard SVG element names.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        fo.append('xhtml:a' as any)
+          .attr('href', issueUrl)
+          .attr('target', '_blank')
+          .attr('rel', 'noopener noreferrer')
+          .attr('title', issueData.summary)
+          .style('display', 'block')
+          .style('overflow', 'hidden')
+          .style('text-overflow', 'ellipsis')
+          .style('white-space', 'nowrap')
+          .style('font-size', '11px')
+          .style('line-height', `${BAR_HEIGHT}px`)
+          .style('color', 'var(--ring-link-color)')
+          .style('text-decoration', 'none')
+          .style('text-align', 'right')
+          .style('padding-right', '4px')
+          .text(issueData.idReadable);
+      } else {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        fo.append('xhtml:div' as any)
+          .attr('title', issueData.summary)
+          .style('overflow', 'hidden')
+          .style('text-overflow', 'ellipsis')
+          .style('white-space', 'nowrap')
+          .style('font-size', '11px')
+          .style('line-height', `${BAR_HEIGHT}px`)
+          .style('color', 'var(--ring-text-color)')
+          .style('text-align', 'right')
+          .style('padding-right', '4px')
+          .text(issueData.idReadable);
+      }
+    });
+
+    // ─── Chart pane (scrollable, no left margin needed) ─────────────────────
+    svg
+      .attr('width', svgWidth)
+      .attr('height', totalHeight)
+      .attr('aria-label', `Issue State History chart: ${data.length} issues`);
+
+    const g = svg
+      .append('g')
+      .attr('transform', `translate(${MARGIN.left},${MARGIN.top})`);
+
     // ─── Axis + grid lines ───────────────────────────────────────────────────
-    const tickCount = Math.max(2, Math.min(10, Math.floor(chartWidth / 90)));
+    const tickCount = Math.max(2, Math.min(Math.ceil(domainDays), Math.floor(chartInnerWidth / 90)));
 
     const xAxis = d3.axisBottom<Date>(xScale)
       .ticks(tickCount)
@@ -209,7 +295,7 @@ export default function GanttChart({ data, statusOrder, baseUrl }: GanttChartPro
       .attr('class', 'row-bg')
       .attr('x', 0)
       .attr('y', 0)
-      .attr('width', chartWidth)
+      .attr('width', chartInnerWidth)
       .attr('height', ROW_HEIGHT)
       .attr('fill', 'transparent')
       .on('mouseover', function () {
@@ -251,58 +337,7 @@ export default function GanttChart({ data, statusOrder, baseUrl }: GanttChartPro
       });
     });
 
-    // ─── Y axis (issue IDs as clickable links via foreignObject) ─────────────
-    const yAxisG = g.append('g').attr('class', 'y-axis');
-
-    data.forEach((issueData) => {
-      const y = yScale(issueData.issueId) ?? 0;
-      const issueUrl = baseUrl ? `${baseUrl}/issue/${issueData.idReadable}` : undefined;
-
-      const fo = yAxisG.append('foreignObject')
-        .attr('x', -MARGIN.left)
-        .attr('y', y + ROW_PADDING)
-        .attr('width', MARGIN.left - 4)
-        .attr('height', BAR_HEIGHT);
-
-      if (issueUrl) {
-        // `as any` is required because D3's TypeScript types do not include the
-        // xhtml: namespace prefix needed to render an <a> element inside SVG
-        // foreignObject. The xhtml: prefix is the correct W3C way to embed HTML
-        // elements in SVG, but @types/d3 only exposes standard SVG element names.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        fo.append('xhtml:a' as any)
-          .attr('href', issueUrl)
-          .attr('target', '_blank')
-          .attr('rel', 'noopener noreferrer')
-          .attr('title', issueData.summary)
-          .style('display', 'block')
-          .style('overflow', 'hidden')
-          .style('text-overflow', 'ellipsis')
-          .style('white-space', 'nowrap')
-          .style('font-size', '11px')
-          .style('line-height', `${BAR_HEIGHT}px`)
-          .style('color', 'var(--ring-link-color)')
-          .style('text-decoration', 'none')
-          .style('text-align', 'right')
-          .style('padding-right', '4px')
-          .text(issueData.idReadable);
-      } else {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        fo.append('xhtml:div' as any)
-          .attr('title', issueData.summary)
-          .style('overflow', 'hidden')
-          .style('text-overflow', 'ellipsis')
-          .style('white-space', 'nowrap')
-          .style('font-size', '11px')
-          .style('line-height', `${BAR_HEIGHT}px`)
-          .style('color', 'var(--ring-text-color)')
-          .style('text-align', 'right')
-          .style('padding-right', '4px')
-          .text(issueData.idReadable);
-      }
-    });
-
-  }, [data, debouncedWidth, statusOrder, baseUrl]);
+  }, [data, containerWidth, debouncedWidth, statusOrder, baseUrl]);
 
   if (data.length === 0) {
     return (
@@ -311,8 +346,6 @@ export default function GanttChart({ data, statusOrder, baseUrl }: GanttChartPro
       </div>
     );
   }
-
-  const useHorizontalScroll = containerWidth < MIN_CHART_WIDTH;
 
   return (
     <div
@@ -340,17 +373,29 @@ export default function GanttChart({ data, statusOrder, baseUrl }: GanttChartPro
         </div>
       </div>
 
-      {/* Chart scroll container */}
-      <div
-        className="ish-gantt-scroll"
-        style={{ overflowX: useHorizontalScroll ? 'auto' : 'hidden' }}
-      >
-        <svg
-          ref={svgRef}
-          className="ish-gantt-svg"
-          role="img"
-          aria-label={`Issue State History Gantt chart showing ${data.length} issues`}
-        />
+      {/* Outer vertical-scroll owner: both panes scroll together as a unit. */}
+      <div className="ish-gantt-vscroll">
+        <div className="ish-gantt-panes">
+          {/* Frozen labels pane: fixed width, no horizontal scroll. */}
+          <div className="ish-gantt-labels-pane" style={{ width: LABELS_WIDTH }}>
+            <svg
+              ref={labelsSvgRef}
+              className="ish-gantt-labels-svg"
+              role="img"
+              aria-label="Issue ID labels"
+            />
+          </div>
+
+          {/* Scrollable chart pane: horizontal scroll only. */}
+          <div className="ish-gantt-scroll" ref={scrollRef}>
+            <svg
+              ref={svgRef}
+              className="ish-gantt-svg"
+              role="img"
+              aria-label={`Issue State History Gantt chart showing ${data.length} issues`}
+            />
+          </div>
+        </div>
       </div>
 
       {/* Tooltip */}
