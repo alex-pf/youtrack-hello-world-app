@@ -25,7 +25,13 @@ const PROJECT_CUSTOM_FIELD_FIELDS =
   'id,field(id,name,fieldType(id,valueType)),' +
   'bundle(id,values(id,name,ordinal,isResolved,color(id,background,foreground)))';
 
-const ISSUE_FIELDS = 'id,idReadable,summary,resolved,created,updated';
+// Includes `fields(...)` so the current State value is available as a
+// fallback for issues that have never had a state-change activity (e.g.
+// still sitting in their initial default status) — see extractCurrentState.
+const ISSUE_FIELDS =
+  'id,idReadable,summary,resolved,created,updated,' +
+  'fields(id,value(id,name,localizedName,presentation),' +
+  'projectCustomField(id,field(id,name,localizedName,fieldType(id,valueType))))';
 
 const ACTIVITY_ITEM_FIELDS =
   'id,timestamp,author(id,name,login),category(id),' +
@@ -145,6 +151,24 @@ export async function loadProjectStates(
 }
 
 // ─── Issues ──────────────────────────────────────────────────────────────────
+
+/**
+ * Reads an issue's current State field value (id + name), used as a fallback
+ * for issues that have never had a state-change activity — e.g. an issue
+ * still sitting in its initial default status, which YouTrack does not log
+ * as a "change" activity. Without this fallback such issues would have no
+ * usable timeline at all and would be (incorrectly) excluded from the chart.
+ */
+export function extractCurrentState(issue: Issue): { id: string; name: string } | undefined {
+  const stateField = issue.fields.find(
+    (f) => f.projectCustomField?.field?.fieldType?.valueType?.toLowerCase().includes('state')
+  );
+  if (!stateField) return undefined;
+  const val = stateField.value;
+  const single = Array.isArray(val) ? val[0] : val;
+  if (!single?.name) return undefined;
+  return { id: single.id ?? '', name: single.name };
+}
 
 export async function loadIssues(
   host: EmbeddableWidgetAPI,
