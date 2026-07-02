@@ -2,11 +2,10 @@
 .ish-gantt-wrapper {
   position: relative;
   width: 100%;
-  height: calc(100vh - 60px);
+  height: 100%;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding-bottom: 20px;
 }
 
 /* ─── Legend ──────────────────────────────────────────────────────────────── */

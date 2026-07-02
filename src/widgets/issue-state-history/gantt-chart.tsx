@@ -156,7 +156,7 @@ export default function GanttChart({ data, statusOrder, baseUrl }: GanttChartPro
     // pane and the chart's own left/right margins). This is what makes the
     // chart overflow (and the horizontal scrollbar appear) when the date
     // range is wide, instead of always being compressed to fit. ───────────
-    const availableWidth = Math.max(containerWidth - LABELS_WIDTH, MIN_CHART_WIDTH - LABELS_WIDTH);
+    const availableWidth = Math.max(debouncedWidth - LABELS_WIDTH, MIN_CHART_WIDTH - LABELS_WIDTH);
     const chartInnerWidth = Math.max(domainDays * MIN_PX_PER_DAY, availableWidth - MARGIN.left - MARGIN.right);
     const svgWidth = chartInnerWidth + MARGIN.left + MARGIN.right;
 
@@ -337,7 +337,7 @@ export default function GanttChart({ data, statusOrder, baseUrl }: GanttChartPro
       });
     });
 
-  }, [data, containerWidth, debouncedWidth, statusOrder, baseUrl]);
+  }, [data, debouncedWidth, statusOrder, baseUrl]);
 
   if (data.length === 0) {
     return (
