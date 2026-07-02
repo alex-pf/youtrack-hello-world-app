@@ -162,12 +162,27 @@ export interface Issue {
   fields: IssueField[];
 }
 
-// ─── Chart data (minimal placeholder) ───────────────────────────────────────
+// ─── Chart data ──────────────────────────────────────────────────────────────
 
-// Minimal per-issue data shape; segments/dates added in Task 4/5 when the
-// date-based data model (calendar-date X axis) is designed.
+// A single interval an issue spent in one status, expressed as absolute
+// calendar timestamps (not durations) — used for the calendar-date X axis.
+export interface DateSegment {
+  // Configured status id, or null when the status is not present in
+  // statusOrder (see isUnconfigured).
+  statusId: string | null;
+  statusName: string;
+  startDate: number;   // Unix ms — when the issue entered this status
+  endDate: number;      // Unix ms — when the issue left this status (or now/resolved for the last segment)
+  // True when statusName was not found in the configured statusOrder list.
+  // Segments like this must still be rendered (as gray bars), not dropped.
+  isUnconfigured: boolean;
+}
+
 export interface IssueStateHistoryData {
   issueId: string;              // internal ID
   idReadable: string;           // e.g. "PROJ-123"
   summary: string;
+  segments: DateSegment[];      // chronological list of status intervals
+  overallStart: number;         // Unix ms — start of the first segment
+  overallEnd: number;           // Unix ms — end of the last segment
 }
