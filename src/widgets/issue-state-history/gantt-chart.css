@@ -2,7 +2,11 @@
 .ish-gantt-wrapper {
   position: relative;
   width: 100%;
-  height: 100%;
+  /* height: 100% does not resolve inside the YouTrack widget iframe (the
+     body has no explicit height there) — this caused the chart to collapse
+     to zero height and render blank. Use a viewport-relative height instead,
+     matching issues-progress's proven-working pattern. */
+  height: calc(100vh - 60px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
