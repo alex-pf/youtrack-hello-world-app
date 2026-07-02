@@ -6,6 +6,7 @@ import {
   DateSegment,
   IssueStateHistoryData,
 } from './types';
+import { extractCurrentState } from './resources';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -146,16 +147,32 @@ export interface DateSegmentsResult {
  * @param issueCreatedAt - Unix ms timestamp the issue was created
  * @param issueResolvedAt - Unix ms timestamp the issue was resolved, or null if still open
  * @param statusOrder - Ordered list of configured statuses; statusOrder[0] is the "start" status (may be empty if unconfigured)
+ * @param currentState - The issue's current State field value, used as a
+ *   fallback single segment (creation → now/resolved) when the issue has NO
+ *   state-change activity at all (e.g. it has never left its initial default
+ *   status — YouTrack does not log that as a "change"). Without this, such
+ *   issues would have an empty timeline and be excluded, violating the
+ *   requirement that every matched issue must be visible on the chart.
  * @returns { segments, neverReachedStartStatus } — segments is [] only when
- *   the issue has no usable transition/creation timeline at all
+ *   the issue has no usable transition/creation timeline AND no current
+ *   state value at all
  */
 export function buildDateSegments(
   activities: IssueActivityItem[],
   issueCreatedAt: number,
   issueResolvedAt: number | null,
-  statusOrder: StatusOrderItem[]
+  statusOrder: StatusOrderItem[],
+  currentState?: { id: string; name: string }
 ): DateSegmentsResult {
-  const timeline = buildTransitionTimeline(activities, issueCreatedAt);
+  let timeline = buildTransitionTimeline(activities, issueCreatedAt);
+
+  // Fallback: no state-change activity at all — the issue has been sitting
+  // in one status since creation. Synthesize a single-entry timeline from
+  // its current State field value so it still gets a visible segment.
+  if (timeline.length === 0 && currentState) {
+    timeline = [{ timestamp: issueCreatedAt, stateName: currentState.name, stateId: currentState.id }];
+  }
+
   if (timeline.length === 0) return { segments: [], neverReachedStartStatus: statusOrder.length > 0 };
 
   // Map for quick "is this state configured" lookups (case-insensitive name, or id match)
@@ -249,15 +266,15 @@ export function buildIssueStateHistoryData(
       activities,
       issue.created ?? Date.now(),
       issue.resolved,
-      statusOrder
+      statusOrder,
+      extractCurrentState(issue)
     );
 
     if (segments.length === 0) {
-      // No usable timeline at all (no state-change activity and — in
-      // practice — a missing/invalid created timestamp). Skip rather than
-      // render a broken zero-width row; this should be rare since
-      // buildDateSegments() now falls back to issue.created whenever
-      // possible.
+      // No usable timeline at all — no state-change activity AND no current
+      // State field value could be read either (extremely rare: a project
+      // without a State-type field, or a malformed response). Skip rather
+      // than render a broken zero-width row.
       continue;
     }
 
