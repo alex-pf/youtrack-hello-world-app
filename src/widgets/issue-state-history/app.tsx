@@ -14,6 +14,22 @@ interface Props {
   host: EmbeddableWidgetAPI;
 }
 
+// ─── Indicator toggle panel ─────────────────────────────────────────────────
+// Session-level (not persisted to config) registry of indicator TYPES the
+// user can independently show/hide. Keyed by ChartIndicator.semanticType.
+// Each future indicator producer (Task 3: estimate flag, Task 4: blocking
+// hatch) should add one entry here with its own semanticType + label — the
+// checkbox panel below is driven entirely off this list, so no other app.tsx
+// changes are needed to add a new toggle.
+interface IndicatorTypeOption {
+  semanticType: string;
+  label: string;
+}
+
+const INDICATOR_TYPE_OPTIONS: IndicatorTypeOption[] = [
+  { semanticType: 'estimate-date-change', label: 'Estimate Date change' },
+];
+
 export default function App({ host }: Props) {
   const [isConfiguring, setIsConfiguring] = useState(false);
   const [config, setConfig] = useState<WidgetConfig | null>(null);
@@ -30,6 +46,22 @@ export default function App({ host }: Props) {
   // Raw data kept for debug mode rendering
   const [debugIssues, setDebugIssues] = useState<Issue[]>([]);
   const [debugActivitiesMap, setDebugActivitiesMap] = useState<Map<string, IssueActivityItem[]>>(new Map());
+  // Indicator visibility toggles — session-only, defaults to all types visible.
+  const [visibleIndicatorTypes, setVisibleIndicatorTypes] = useState<Set<string>>(
+    () => new Set(INDICATOR_TYPE_OPTIONS.map((o) => o.semanticType))
+  );
+
+  const toggleIndicatorType = useCallback((semanticType: string) => {
+    setVisibleIndicatorTypes((prev) => {
+      const next = new Set(prev);
+      if (next.has(semanticType)) {
+        next.delete(semanticType);
+      } else {
+        next.add(semanticType);
+      }
+      return next;
+    });
+  }, []);
 
   // ─── Configure event bridge ────────────────────────────────────────────────
   useEffect(() => {
@@ -244,12 +276,46 @@ export default function App({ host }: Props) {
     <div style={{ position: 'absolute', inset: 0, display: 'grid', gridTemplateRows: 'auto 1fr auto', overflow: 'hidden' }}>
       <div style={{
         display: 'flex',
-        justifyContent: 'flex-end',
+        justifyContent: 'space-between',
         alignItems: 'center',
         padding: '2px 8px',
         gap: 8,
         flexShrink: 0,
       }}>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          fontSize: 'var(--ring-font-size-smaller)',
+          color: 'var(--ring-text-color)',
+        }}>
+          {INDICATOR_TYPE_OPTIONS.map((opt) => (
+            <label
+              key={opt.semanticType}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                cursor: 'pointer',
+                userSelect: 'none',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={visibleIndicatorTypes.has(opt.semanticType)}
+                onChange={() => toggleIndicatorType(opt.semanticType)}
+                style={{ margin: 0, cursor: 'pointer' }}
+              />
+              <span>{opt.label}</span>
+            </label>
+          ))}
+        </div>
+
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+        }}>
         {isRefreshing && (
           <div style={{
             display: 'flex',
@@ -278,6 +344,7 @@ export default function App({ host }: Props) {
         >
           Обновить
         </button>
+        </div>
       </div>
 
       <div style={{ overflow: 'auto', minHeight: 0 }}>
@@ -286,6 +353,7 @@ export default function App({ host }: Props) {
           statusOrder={config?.statusOrder ?? []}
           baseUrl={baseUrl}
           gridStep={config?.gridStep ?? 'day'}
+          visibleIndicatorTypes={visibleIndicatorTypes}
         />
       </div>
 

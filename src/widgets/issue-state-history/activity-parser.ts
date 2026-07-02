@@ -5,6 +5,7 @@ import {
   StatusOrderItem,
   DateSegment,
   IssueStateHistoryData,
+  ChartIndicator,
 } from './types';
 import { extractCurrentState } from './resources';
 
@@ -14,6 +15,15 @@ function toActivityValueArray(val: ActivityValue[] | ActivityValue | null): Acti
   if (!val) return [];
   if (Array.isArray(val)) return val;
   return [val];
+}
+
+function toDateString(timestampMs: number): string {
+  return new Date(timestampMs).toISOString().slice(0, 10); // YYYY-MM-DD
+}
+
+function formatDateOrUnset(ts: number | null): string {
+  if (ts === null) return 'не задано';
+  return new Date(ts).toLocaleDateString();
 }
 
 /**
@@ -233,6 +243,123 @@ export function buildDateSegments(
   return { segments: allSegments.slice(startIndex), neverReachedStartStatus: false };
 }
 
+// ─── Estimate Date change indicators ────────────────────────────────────────
+
+export interface EstimateDateChangeEvent {
+  changedAt: number;
+  fromDate: number | null;
+  toDate: number | null;
+}
+
+/**
+ * Walks an issue's raw activity list and detects changes to the "Estimated
+ * Date" custom field. Mirrors the detection logic in
+ * issues-progress/activity-parser.ts (parseEstimateDateChanges): match by
+ * field name (language-independent substring match on common English field
+ * names), parse added/removed ActivityValue.value as a Unix ms timestamp
+ * (may arrive as a number or a numeric string from the API).
+ *
+ * Same-day deduplication: if multiple changes happen on the same calendar
+ * day, only the LAST one (highest timestamp) is kept — consistent with
+ * issues-progress, and it keeps the chart from cluttering a single day with
+ * redundant markers for rapid successive edits.
+ *
+ * @param activities - Raw activity items for one issue (unfiltered)
+ * @returns Change events sorted chronologically, one per unique day
+ */
+export function parseEstimateDateChanges(
+  activities: IssueActivityItem[]
+): EstimateDateChangeEvent[] {
+  const dateChanges = activities
+    .filter((a) => {
+      const fieldName = a.field?.name?.toLowerCase() ?? '';
+      return (
+        fieldName.includes('estimated') ||
+        fieldName.includes('due date') ||
+        fieldName.includes('deadline')
+      );
+    })
+    .sort((a, b) => a.timestamp - b.timestamp);
+
+  if (dateChanges.length === 0) return [];
+
+  // Group by day — keep last change per day
+  const byDay = new Map<string, IssueActivityItem>();
+  for (const activity of dateChanges) {
+    const day = toDateString(activity.timestamp);
+    byDay.set(day, activity); // overwrites earlier changes on same day
+  }
+
+  const parseDate = (vals: ActivityValue[]): number | null => {
+    if (vals.length === 0) return null;
+    const val = vals[0];
+
+    // PRIMARY: accept both number and string representation of Unix ms timestamp
+    if (val.value !== undefined && val.value !== null) {
+      const ts = Number(val.value);
+      if (!isNaN(ts) && ts > 0) return ts;
+    }
+
+    // FALLBACK 1: val.id as numeric timestamp or ISO date string
+    if (val.id) {
+      const ts = Number(val.id);
+      if (!isNaN(ts) && ts > 0) return ts;
+      const isoTs = Date.parse(val.id);
+      if (!isNaN(isoTs) && isoTs > 0) return isoTs;
+    }
+
+    // FALLBACK 2: presentation string (last resort)
+    if (val.presentation) {
+      const parsed = Date.parse(val.presentation);
+      return isNaN(parsed) ? null : parsed;
+    }
+
+    return null;
+  };
+
+  const result: EstimateDateChangeEvent[] = [];
+  for (const activity of byDay.values()) {
+    const removedVals = toActivityValueArray(activity.removed);
+    const addedVals = toActivityValueArray(activity.added);
+    result.push({
+      changedAt: activity.timestamp,
+      fromDate: parseDate(removedVals),
+      toDate: parseDate(addedVals),
+    });
+  }
+
+  result.sort((a, b) => a.changedAt - b.changedAt);
+  return result;
+}
+
+/**
+ * Builds 'marker' ChartIndicators for an issue's Estimated Date field
+ * changes. Per product spec, these markers carry NO inline chart label (only
+ * a tooltip) — the marker's date is the moment the field was CHANGED, not
+ * the estimated date value itself.
+ *
+ * semanticType is set to 'estimate-date-change' so the UI toggle panel can
+ * show/hide this specific indicator type independently of any other
+ * 'marker'-kind indicator that a future task might add.
+ */
+export function buildEstimateDateChangeIndicators(
+  issueId: string,
+  activities: IssueActivityItem[]
+): ChartIndicator[] {
+  const changes = parseEstimateDateChanges(activities);
+  return changes.map((change, idx) => ({
+    kind: 'marker',
+    semanticType: 'estimate-date-change',
+    id: `${issueId}-estimate-change-${idx}-${change.changedAt}`,
+    date: change.changedAt,
+    tooltipTitle: 'Изменение Estimated Date',
+    tooltipRows: [
+      { label: 'Было', value: formatDateOrUnset(change.fromDate) },
+      { label: 'Стало', value: formatDateOrUnset(change.toDate) },
+    ],
+  }));
+}
+
 // ─── Main aggregator ───────────────────────────────────────────────────────────
 
 /**
@@ -278,6 +405,8 @@ export function buildIssueStateHistoryData(
       continue;
     }
 
+    const estimateDateIndicators = buildEstimateDateChangeIndicators(issue.id, activities);
+
     result.push({
       issueId: issue.id,
       idReadable: issue.idReadable,
@@ -286,32 +415,11 @@ export function buildIssueStateHistoryData(
       overallStart: segments[0].startDate,
       overallEnd: segments[segments.length - 1].endDate,
       neverReachedStartStatus,
+      // Built as a fresh array from each producer's output, appended together —
+      // Task 3/4 producers should follow the same pattern (compute their own
+      // indicator array, then spread it in here) rather than overwriting.
+      indicators: [...estimateDateIndicators],
     });
-  }
-
-  // TEMP: Task 1 plumbing verification, remove in Task 2/3.
-  // No real indicator producer exists yet (that's tasks 2-4: estimate-change
-  // marker, estimate flag, blocking hatch). This hardcodes one 'flag'
-  // indicator on the first result row purely so a reviewer can visually
-  // confirm the generic indicator rendering path in gantt-chart.tsx actually
-  // draws something end-to-end. Whoever implements the real estimate-date
-  // flag producer (Task 3) should delete this block and wire up real data.
-  if (result.length > 0) {
-    const first = result[0];
-    const flagDate = first.overallStart + (first.overallEnd - first.overallStart) / 2;
-    first.indicators = [
-      {
-        kind: 'flag',
-        id: `${first.issueId}-temp-flag`,
-        date: flagDate,
-        label: new Date(flagDate).toLocaleDateString(),
-        tooltipTitle: 'TEMP: plumbing test flag',
-        tooltipRows: [
-          { label: 'Date', value: new Date(flagDate).toLocaleDateString() },
-          { label: 'Note', value: 'Remove once a real indicator producer exists' },
-        ],
-      },
-    ];
   }
 
   return result;
