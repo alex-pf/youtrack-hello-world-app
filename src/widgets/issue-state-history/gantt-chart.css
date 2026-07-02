@@ -127,6 +127,12 @@
   cursor: default;
 }
 
+/* Invisible, wider mouse target behind each marker/flag — the visible
+   glyphs are only 1.5-2px wide and hard to hover precisely. */
+.ish-gantt-svg .ish-indicator__hit {
+  cursor: pointer;
+}
+
 .ish-gantt-svg .ish-indicator--marker {
   opacity: 0.9;
 }

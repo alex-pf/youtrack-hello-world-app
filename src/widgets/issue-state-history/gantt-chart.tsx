@@ -78,6 +78,12 @@ const INDICATOR_DEFAULT_COLOR: Record<ChartIndicator['kind'], string> = {
 // referenced by every 'hatch' indicator via fill="url(#...)".
 const HATCH_PATTERN_ID = 'ish-gantt-hatch-pattern';
 
+// Width (px) of the invisible, wider hover/tooltip hit-area drawn behind
+// each point-in-time indicator (marker/flag). The visible glyphs are only
+// 1.5-2px wide, which is hard to hover precisely — this pads the actual
+// mouse target without changing what's drawn.
+const INDICATOR_HIT_WIDTH = 12;
+
 // Rough heuristic for estimating rendered text width of a flag's inline
 // label, in px per character, at the label's font-size (10px, see CSS).
 // This is deliberately crude (no canvas measureText call) — it just needs
@@ -487,15 +493,19 @@ export default function GanttChart({ data, statusOrder, baseUrl, gridStep, visib
         const cy = ROW_HEIGHT / 2;
 
         if (indicator.kind === 'marker') {
-          // Small vertical tick, centered in the row.
-          rowG.append('line')
-            .attr('class', 'ish-indicator ish-indicator--marker')
-            .attr('x1', x)
-            .attr('x2', x)
-            .attr('y1', ROW_PADDING)
-            .attr('y2', ROW_PADDING + BAR_HEIGHT)
-            .attr('stroke', color)
-            .attr('stroke-width', 2)
+          const markerGroup = rowG.append('g')
+            .attr('class', 'ish-indicator ish-indicator--marker');
+
+          // Invisible wider hit-area — the visible tick is only 2px wide,
+          // too thin to reliably hover. Event handlers live here so the
+          // visible glyph can stay purely decorative (pointer-events: none).
+          markerGroup.append('rect')
+            .attr('class', 'ish-indicator__hit')
+            .attr('x', x - INDICATOR_HIT_WIDTH / 2)
+            .attr('y', 0)
+            .attr('width', INDICATOR_HIT_WIDTH)
+            .attr('height', ROW_HEIGHT)
+            .attr('fill', 'transparent')
             .on('mouseover', function (event: MouseEvent) {
               showIndicatorTooltip(event, indicator);
             })
@@ -505,24 +515,40 @@ export default function GanttChart({ data, statusOrder, baseUrl, gridStep, visib
             .on('mouseout', function () {
               hideTooltip();
             });
+
+          // Small vertical tick, centered in the row.
+          markerGroup.append('line')
+            .attr('x1', x)
+            .attr('x2', x)
+            .attr('y1', ROW_PADDING)
+            .attr('y2', ROW_PADDING + BAR_HEIGHT)
+            .attr('stroke', color)
+            .attr('stroke-width', 2)
+            .attr('pointer-events', 'none');
           return;
         }
 
         // kind === 'flag'
         const flagGroup = rowG.append('g')
-          .attr('class', 'ish-indicator ish-indicator--flag')
-          .on('mouseover', function (event: MouseEvent) {
-            showIndicatorTooltip(event, indicator);
-          })
-          .on('mousemove', function (event: MouseEvent) {
-            moveTooltip(event);
-          })
-          .on('mouseout', function () {
-            hideTooltip();
-          });
+          .attr('class', 'ish-indicator ish-indicator--flag');
+
+        // Invisible wider hit-area covering the pole+pennant glyph. Widened
+        // below to also cover any rendered inline label, so the whole
+        // "glyph + label" visual reads as one hoverable target.
+        const flagHitRect = flagGroup.append('rect')
+          .attr('class', 'ish-indicator__hit')
+          .attr('x', x - INDICATOR_HIT_WIDTH / 2)
+          .attr('y', 0)
+          .attr('width', INDICATOR_HIT_WIDTH)
+          .attr('height', ROW_HEIGHT)
+          .attr('fill', 'transparent');
+        // (event handlers attached below, once the hit rect's final width —
+        // which also needs to cover any rendered inline label — is known)
 
         // Flag glyph: a small triangle pennant on a short pole, anchored at
         // (x, cy). Cheap to draw as a single <path>, no external icon asset.
+        // Purely decorative — pointer-events disabled, hit rects above/below
+        // handle hover.
         const poleTopY = cy - BAR_HEIGHT / 2;
         const poleBottomY = cy + BAR_HEIGHT / 2;
         flagGroup.append('line')
@@ -531,10 +557,12 @@ export default function GanttChart({ data, statusOrder, baseUrl, gridStep, visib
           .attr('y1', poleTopY)
           .attr('y2', poleBottomY)
           .attr('stroke', color)
-          .attr('stroke-width', 1.5);
+          .attr('stroke-width', 1.5)
+          .attr('pointer-events', 'none');
         flagGroup.append('path')
           .attr('d', `M${x},${poleTopY} L${x + 8},${poleTopY + 3} L${x},${poleTopY + 6} Z`)
-          .attr('fill', color);
+          .attr('fill', color)
+          .attr('pointer-events', 'none');
 
         // ─── Adaptive inline label heuristic ────────────────────────────
         // Goal: show indicator.label next to the flag when there's enough
@@ -580,9 +608,32 @@ export default function GanttChart({ data, statusOrder, baseUrl, gridStep, visib
               .attr('x', labelStartX)
               .attr('y', cy)
               .attr('dominant-baseline', 'middle')
+              .attr('pointer-events', 'none')
               .text(renderedLabel);
+
+            // Widen the hit rect to also cover the rendered label text
+            // (estimated with the same px-per-char heuristic used to fit it).
+            const labelPx = renderedLabel.length * FLAG_LABEL_PX_PER_CHAR;
+            const hitLeft = x - INDICATOR_HIT_WIDTH / 2;
+            const hitRight = labelStartX + labelPx + FLAG_LABEL_MIN_GAP;
+            flagHitRect
+              .attr('x', hitLeft)
+              .attr('width', hitRight - hitLeft);
           }
         }
+
+        // Event handlers attached last, once flagHitRect has its final
+        // (possibly label-widened) size.
+        flagHitRect
+          .on('mouseover', function (event: MouseEvent) {
+            showIndicatorTooltip(event, indicator);
+          })
+          .on('mousemove', function (event: MouseEvent) {
+            moveTooltip(event);
+          })
+          .on('mouseout', function () {
+            hideTooltip();
+          });
       });
     });
 
