@@ -43,6 +43,16 @@
       "extensionPoint": "DASHBOARD_WIDGET",
       "settingsSchemaPath": "issues-progress/widget-settings.json",
       "permissions": ["READ_ISSUE"]
+    },
+    {
+      "key": "issue-state-history-widget",
+      "name": "Issue State History",
+      "description": "Shows issue state history for matching issues on a calendar-date X axis",
+      "iconPath": "issue-state-history/widget-icon.svg",
+      "indexPath": "issue-state-history/index.html",
+      "extensionPoint": "DASHBOARD_WIDGET",
+      "settingsSchemaPath": "issue-state-history/widget-settings.json",
+      "permissions": ["READ_ISSUE"]
     }
   ]
 }

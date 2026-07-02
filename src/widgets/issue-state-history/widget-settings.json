@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "type": "object",
+  "properties": {
+    "search": { "type": "string" },
+    "title": { "type": "string" },
+    "projects": { "type": "string" },
+    "statusOrder": { "type": "string" },
+    "ltEnabled": { "type": "string" },
+    "ltSettings": { "type": "string" },
+    "showEstimateDate": { "type": "string" },
+    "showProjectedLT": { "type": "string" },
+    "debugMode": { "type": "string" },
+    "description": { "type": "string" },
+    "refreshInterval": { "type": "integer" }
+  }
+}
