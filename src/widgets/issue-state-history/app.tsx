@@ -285,6 +285,7 @@ export default function App({ host }: Props) {
           data={chartData}
           statusOrder={config?.statusOrder ?? []}
           baseUrl={baseUrl}
+          gridStep={config?.gridStep ?? 'day'}
         />
       </div>
 

@@ -1,12 +1,13 @@
 import React, { useRef, useEffect, useState } from 'react';
 import * as d3 from 'd3';
-import { IssueStateHistoryData, DateSegment, StatusOrderItem } from './types';
+import { IssueStateHistoryData, DateSegment, StatusOrderItem, GridStep } from './types';
 import './gantt-chart.css';
 
 interface GanttChartProps {
   data: IssueStateHistoryData[];
   statusOrder: StatusOrderItem[];
   baseUrl: string;
+  gridStep: GridStep;
 }
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
@@ -20,15 +21,26 @@ const ROW_HEIGHT = 28;
 const ROW_PADDING = 4;
 const BAR_HEIGHT = ROW_HEIGHT - ROW_PADDING * 2;
 const MIN_CHART_WIDTH = 400;
-// Minimum horizontal pixels allotted per calendar day in the scrollable chart
-// pane. Chosen so that date tick labels ("01 Jan 26") formatted at typical
-// tick density (one tick roughly every 90px, see tickCount below) remain
-// legible without overlapping, while keeping short date ranges (a few weeks)
-// from becoming needlessly wide. At 12px/day, a ~7-day tick spacing yields
-// ~84px between ticks, close to the 90px axis label spacing used elsewhere.
-// This is a heuristic and may need Lead/design tuning once tested against
-// real multi-month date ranges.
-const MIN_PX_PER_DAY = 12;
+// Minimum horizontal pixels allotted per GRID UNIT (one tick/gridline
+// interval, matching the configured gridStep) in the scrollable chart pane.
+// The chart's width is `unitsInDomain * MIN_PX_PER_UNIT[gridStep]` and never
+// compresses narrower than that — the pane scrolls horizontally instead
+// (see chartInnerWidth below). Values chosen so date tick labels stay
+// legible without overlapping, since each grid unit gets exactly one tick:
+//   day:   24px — a short "%d %b" label (e.g. "01 Jan") fits comfortably in
+//          ~24px when ticks are dense; this matches the original 12px/day
+//          heuristic doubled, since ticks now render on every day instead
+//          of a "nice" subset.
+//   week:  40px — one tick per ISO week; slightly more room than a day
+//          because week labels also show "%d %b" but readers need to
+//          visually distinguish adjacent week boundaries.
+//   month: 60px — one tick per month; "%b %y" (e.g. "Jan 26") is wider than
+//          the day/week formats, so it gets the most room per unit.
+const MIN_PX_PER_UNIT: Record<GridStep, number> = {
+  day: 24,
+  week: 40,
+  month: 60,
+};
 
 // ─── Color palette for statuses (fallback if no color from API) ───────────────
 const STATUS_COLORS = [
@@ -59,7 +71,7 @@ function buildTooltipHtml(title: string, rows: { label: string; value: string }[
   return `<div class="ish-gantt-tooltip__header">${escHtml(title)}</div>${rowsHtml}`;
 }
 
-export default function GanttChart({ data, statusOrder, baseUrl }: GanttChartProps) {
+export default function GanttChart({ data, statusOrder, baseUrl, gridStep }: GanttChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -149,7 +161,15 @@ export default function GanttChart({ data, statusOrder, baseUrl }: GanttChartPro
     const rangeMs = Math.max(maxEnd - minStart, DAY_MS);
     const padMs = Math.max(rangeMs * 0.03, DAY_MS);
     const xDomain: [Date, Date] = [new Date(minStart - padMs), new Date(maxEnd + padMs)];
-    const domainDays = (xDomain[1].getTime() - xDomain[0].getTime()) / DAY_MS;
+
+    // ─── Grid-unit interval matching the configured gridStep ────────────────
+    const timeInterval = gridStep === 'week' ? d3.timeWeek : gridStep === 'month' ? d3.timeMonth : d3.timeDay;
+
+    // Number of grid units spanned by the domain (e.g. days, ISO weeks, or
+    // months). Used to size the chart width and drives the minimum-width
+    // guarantee below, so the chart never compresses narrower than one
+    // MIN_PX_PER_UNIT per grid unit.
+    const unitsInDomain = Math.max(1, timeInterval.count(xDomain[0], xDomain[1]));
 
     // ─── Chart pane width: driven by date range, never narrower than the
     // available scroll-pane space (containerWidth minus the frozen labels
@@ -157,7 +177,7 @@ export default function GanttChart({ data, statusOrder, baseUrl }: GanttChartPro
     // chart overflow (and the horizontal scrollbar appear) when the date
     // range is wide, instead of always being compressed to fit. ───────────
     const availableWidth = Math.max(debouncedWidth - LABELS_WIDTH, MIN_CHART_WIDTH - LABELS_WIDTH);
-    const chartInnerWidth = Math.max(domainDays * MIN_PX_PER_DAY, availableWidth - MARGIN.left - MARGIN.right);
+    const chartInnerWidth = Math.max(unitsInDomain * MIN_PX_PER_UNIT[gridStep], availableWidth - MARGIN.left - MARGIN.right);
     const svgWidth = chartInnerWidth + MARGIN.left + MARGIN.right;
 
     const xScale = d3.scaleTime().domain(xDomain).range([0, chartInnerWidth]);
@@ -237,11 +257,19 @@ export default function GanttChart({ data, statusOrder, baseUrl }: GanttChartPro
       .attr('transform', `translate(${MARGIN.left},${MARGIN.top})`);
 
     // ─── Axis + grid lines ───────────────────────────────────────────────────
-    const tickCount = Math.max(2, Math.min(Math.ceil(domainDays), Math.floor(chartInnerWidth / 90)));
+    // Ticks/gridlines align exactly to day/week/month boundaries per the
+    // configured gridStep, rather than D3's automatic "nice" tick selection —
+    // this is what makes the grid step configuration visible on the chart.
+    const tickFormat = gridStep === 'month' ? '%b %y' : '%d %b';
+    const tickValues = timeInterval.range(xDomain[0], xDomain[1]);
+    // Ensure the final boundary is included even if range() stops short of it.
+    if (tickValues.length === 0 || tickValues[tickValues.length - 1].getTime() < xDomain[1].getTime()) {
+      tickValues.push(xDomain[1]);
+    }
 
     const xAxis = d3.axisBottom<Date>(xScale)
-      .ticks(tickCount)
-      .tickFormat((d) => d3.timeFormat('%d %b %y')(d as Date));
+      .tickValues(tickValues)
+      .tickFormat((d) => d3.timeFormat(tickFormat)(d as Date));
 
     g.append('g')
       .attr('class', 'x-axis')
@@ -251,7 +279,7 @@ export default function GanttChart({ data, statusOrder, baseUrl }: GanttChartPro
     g.append('g')
       .attr('class', 'grid-lines')
       .selectAll('line')
-      .data(xScale.ticks(tickCount))
+      .data(tickValues)
       .enter()
       .append('line')
       .attr('x1', (d) => xScale(d))
@@ -337,7 +365,7 @@ export default function GanttChart({ data, statusOrder, baseUrl }: GanttChartPro
       });
     });
 
-  }, [data, debouncedWidth, statusOrder, baseUrl]);
+  }, [data, debouncedWidth, statusOrder, baseUrl, gridStep]);
 
   if (data.length === 0) {
     return (
