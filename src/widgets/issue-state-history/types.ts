@@ -228,6 +228,16 @@ export interface ChartIndicator {
   kind: IndicatorKind;
   id: string;              // stable key for React/D3 data-join
 
+  // Finer-grained "what is this indicator, semantically" tag, independent of
+  // `kind`. `kind` only controls HOW something is drawn (tick / pole+pennant
+  // / hatch); it's not granular enough to let the UI toggle individual
+  // indicator producers on/off, since two different semantic indicators can
+  // share the same `kind` (e.g. a future indicator might also be a
+  // 'marker'). The indicator-visibility toggle panel in app.tsx keys off
+  // this field. Optional for now since it's new — producers should set it,
+  // but existing/omitted values just won't be independently toggleable.
+  semanticType?: string;
+
   // Point-in-time indicators (marker, flag).
   date?: number;            // Unix ms
 

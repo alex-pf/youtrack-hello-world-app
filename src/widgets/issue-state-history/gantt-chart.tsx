@@ -8,6 +8,13 @@ interface GanttChartProps {
   statusOrder: StatusOrderItem[];
   baseUrl: string;
   gridStep: GridStep;
+  // Set of ChartIndicator.semanticType values currently toggled ON in the
+  // app.tsx indicator panel. Indicators whose semanticType is set but not
+  // present in this set are filtered out before rendering. Indicators with
+  // no semanticType are always shown (nothing to toggle them by). Undefined
+  // means "no filtering" (show everything) — useful for callers that don't
+  // wire up the toggle panel.
+  visibleIndicatorTypes?: Set<string>;
 }
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
@@ -97,7 +104,7 @@ function buildTooltipHtml(title: string, rows: { label: string; value: string }[
   return `<div class="ish-gantt-tooltip__header">${escHtml(title)}</div>${rowsHtml}`;
 }
 
-export default function GanttChart({ data, statusOrder, baseUrl, gridStep }: GanttChartProps) {
+export default function GanttChart({ data, statusOrder, baseUrl, gridStep, visibleIndicatorTypes }: GanttChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -429,8 +436,12 @@ export default function GanttChart({ data, statusOrder, baseUrl, gridStep }: Gan
     // so they always draw on top, one generic pass shared by every kind. ────
     rows.each(function (issueData) {
       const rowG = d3.select(this);
-      const indicators = issueData.indicators;
-      if (!indicators || indicators.length === 0) return;
+      const indicators = (issueData.indicators ?? []).filter((ind) => {
+        if (!visibleIndicatorTypes) return true;
+        if (!ind.semanticType) return true;
+        return visibleIndicatorTypes.has(ind.semanticType);
+      });
+      if (indicators.length === 0) return;
 
       // Point-in-time indicators (marker + flag), sorted by date — needed so
       // the adaptive-label heuristic below can look at "the next indicator"
@@ -575,7 +586,7 @@ export default function GanttChart({ data, statusOrder, baseUrl, gridStep }: Gan
       });
     });
 
-  }, [data, debouncedWidth, statusOrder, baseUrl, gridStep]);
+  }, [data, debouncedWidth, statusOrder, baseUrl, gridStep, visibleIndicatorTypes]);
 
   if (data.length === 0) {
     return (
