@@ -1,0 +1,160 @@
+/* ─── Wrapper ─────────────────────────────────────────────────────────────── */
+.ish-gantt-wrapper {
+  position: relative;
+  width: 100%;
+  height: calc(100vh - 60px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-bottom: 20px;
+}
+
+/* ─── Legend ──────────────────────────────────────────────────────────────── */
+.ish-gantt-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--ring-line-color);
+  flex-shrink: 0;
+}
+
+.ish-gantt-legend__item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ish-gantt-legend__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.ish-gantt-legend__label {
+  font-size: var(--ring-font-size-smaller);
+  color: var(--ring-text-color);
+  white-space: nowrap;
+}
+
+/* ─── Scroll container ────────────────────────────────────────────────────── */
+.ish-gantt-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
+}
+
+/* ─── SVG ─────────────────────────────────────────────────────────────────── */
+.ish-gantt-svg {
+  display: block;
+}
+
+/* ─── Axes ────────────────────────────────────────────────────────────────── */
+.ish-gantt-svg .x-axis path,
+.ish-gantt-svg .x-axis line {
+  stroke: var(--ring-borders-color);
+}
+
+.ish-gantt-svg .x-axis text {
+  fill: var(--ring-secondary-color);
+  font-size: 11px;
+}
+
+/* ─── Segments ────────────────────────────────────────────────────────────── */
+.ish-gantt-svg .segment {
+  opacity: 0.85;
+  transition: opacity 0.15s;
+  cursor: default;
+}
+
+.ish-gantt-svg .segment:hover {
+  opacity: 1;
+}
+
+.ish-gantt-svg .segment--unconfigured {
+  stroke: var(--ring-borders-color);
+  stroke-width: 0.5;
+  stroke-dasharray: 2,1;
+}
+
+/* ─── Tooltip ─────────────────────────────────────────────────────────────── */
+.ish-gantt-tooltip {
+  position: absolute;
+  background: var(--ring-popup-background-color, var(--ring-content-background-color));
+  border: 1px solid var(--ring-borders-color);
+  border-radius: 4px;
+  padding: 8px 10px;
+  font-size: var(--ring-font-size-smaller);
+  color: var(--ring-text-color);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  pointer-events: none;
+  z-index: 100;
+  min-width: 180px;
+  max-width: 280px;
+}
+
+.ish-gantt-tooltip__header {
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--ring-text-color);
+  border-bottom: 1px solid var(--ring-line-color);
+  padding-bottom: 4px;
+}
+
+.ish-gantt-tooltip__row {
+  display: flex;
+  gap: 6px;
+  margin-top: 3px;
+  line-height: 1.4;
+}
+
+.ish-gantt-tooltip__label {
+  color: var(--ring-secondary-color);
+  flex-shrink: 0;
+  min-width: 50px;
+}
+
+/* ─── Empty state ─────────────────────────────────────────────────────────── */
+.ish-gantt-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--ring-secondary-color);
+  font-size: var(--ring-font-size);
+  padding: 32px;
+  text-align: center;
+}
+
+/* ─── Row hover highlight ─────────────────────────────────────────────────── */
+.ish-gantt-svg .row-bg {
+  transition: fill 0.1s;
+}
+
+/* ─── Issue ID link hover ─────────────────────────────────────────────────── */
+.ish-gantt-svg foreignObject a:hover {
+  text-decoration: underline !important;
+  color: var(--ring-link-hover-color) !important;
+}
+
+/* ─── Scrollbar styling ───────────────────────────────────────────────────── */
+.ish-gantt-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.ish-gantt-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ish-gantt-scroll::-webkit-scrollbar-thumb {
+  background: var(--ring-borders-color);
+  border-radius: 3px;
+}
+
+.ish-gantt-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--ring-icon-secondary-color);
+}

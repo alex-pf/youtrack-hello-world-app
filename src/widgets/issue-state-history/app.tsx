@@ -5,6 +5,7 @@ import Configuration from './configuration';
 import { WidgetConfig, IssueStateHistoryData, IssueActivityItem, Issue, parseStoredConfig } from './types';
 import { loadIssuesWithActivities, loadIssuesCount } from './resources';
 import { buildIssueStateHistoryData } from './activity-parser';
+import GanttChart from './gantt-chart';
 import './app.css';
 
 interface Props {
@@ -229,8 +230,6 @@ export default function App({ host }: Props) {
     );
   }
 
-  // ─── Temporary verification view (pre-D3-chart, Task 5) ────────────────────
-  // TODO(Task 6): Replace this table with the real calendar-date D3 chart.
   return (
     <div style={{ position: 'absolute', inset: 0, display: 'grid', gridTemplateRows: 'auto 1fr', overflow: 'hidden' }}>
       <div style={{
@@ -271,39 +270,12 @@ export default function App({ host }: Props) {
         </button>
       </div>
 
-      <div style={{ overflow: 'auto', minHeight: 0, padding: '0 8px' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--ring-font-size-smaller)' }}>
-          <thead>
-            <tr>
-              <th style={{ textAlign: 'left', borderBottom: '1px solid var(--ring-borders-color)', padding: '4px' }}>Issue</th>
-              <th style={{ textAlign: 'left', borderBottom: '1px solid var(--ring-borders-color)', padding: '4px' }}>Summary</th>
-              <th style={{ textAlign: 'left', borderBottom: '1px solid var(--ring-borders-color)', padding: '4px' }}>Start</th>
-              <th style={{ textAlign: 'left', borderBottom: '1px solid var(--ring-borders-color)', padding: '4px' }}>End</th>
-            </tr>
-          </thead>
-          <tbody>
-            {chartData.map((issue) => (
-              <tr key={issue.issueId}>
-                <td style={{ padding: '4px', borderBottom: '1px solid var(--ring-line-color)' }}>
-                  {baseUrl ? (
-                    <a href={`${baseUrl}/issue/${issue.idReadable}`} target="_blank" rel="noreferrer">
-                      {issue.idReadable}
-                    </a>
-                  ) : (
-                    issue.idReadable
-                  )}
-                </td>
-                <td style={{ padding: '4px', borderBottom: '1px solid var(--ring-line-color)' }}>{issue.summary}</td>
-                <td style={{ padding: '4px', borderBottom: '1px solid var(--ring-line-color)' }}>
-                  {new Date(issue.overallStart).toLocaleDateString()}
-                </td>
-                <td style={{ padding: '4px', borderBottom: '1px solid var(--ring-line-color)' }}>
-                  {new Date(issue.overallEnd).toLocaleDateString()}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div style={{ overflow: 'hidden', minHeight: 0 }}>
+        <GanttChart
+          data={chartData}
+          statusOrder={config?.statusOrder ?? []}
+          baseUrl={baseUrl}
+        />
       </div>
     </div>
   );
