@@ -1,10 +1,12 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import LoaderInline from '@jetbrains/ring-ui-built/components/loader-inline/loader-inline';
+import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 import { EmbeddableWidgetAPI } from '../../../@types/globals';
 import Configuration from './configuration';
 import { WidgetConfig, IssueStateHistoryData, IssueActivityItem, Issue, parseStoredConfig } from './types';
 import { loadIssuesWithActivities, loadIssuesCount } from './resources';
-import { buildIssueStateHistoryData } from './activity-parser';
+import { buildIssueStateHistoryData, getDebugTransitionTimeline } from './activity-parser';
 import GanttChart from './gantt-chart';
 import './app.css';
 
@@ -25,7 +27,7 @@ export default function App({ host }: Props) {
   const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Ref to always have the latest config inside setInterval closure
   const configRef = useRef<WidgetConfig | null>(null);
-  // Raw data kept for future debug mode rendering (Task 8)
+  // Raw data kept for debug mode rendering
   const [debugIssues, setDebugIssues] = useState<Issue[]>([]);
   const [debugActivitiesMap, setDebugActivitiesMap] = useState<Map<string, IssueActivityItem[]>>(new Map());
 
@@ -80,7 +82,7 @@ export default function App({ host }: Props) {
       const data = buildIssueStateHistoryData(issues, activitiesMap, cfg.statusOrder);
 
       setChartData(data);
-      // Persist raw data for future debug mode (Task 8)
+      // Persist raw data for debug mode
       setDebugIssues(issues);
       setDebugActivitiesMap(activitiesMap);
       setError(null);
@@ -174,6 +176,14 @@ export default function App({ host }: Props) {
     }
   };
 
+  // ─── Derived render values (hooks must be before early returns) ───────────
+  const descriptionHtml = useMemo(
+    () => config?.description
+      ? DOMPurify.sanitize(marked(config.description) as string)
+      : '',
+    [config?.description]
+  );
+
   // ─── Render ────────────────────────────────────────────────────────────────
 
   if (isConfiguring) {
@@ -231,7 +241,7 @@ export default function App({ host }: Props) {
   }
 
   return (
-    <div style={{ position: 'absolute', inset: 0, display: 'grid', gridTemplateRows: 'auto 1fr', overflow: 'hidden' }}>
+    <div style={{ position: 'absolute', inset: 0, display: 'grid', gridTemplateRows: 'auto 1fr auto', overflow: 'hidden' }}>
       <div style={{
         display: 'flex',
         justifyContent: 'flex-end',
@@ -270,13 +280,67 @@ export default function App({ host }: Props) {
         </button>
       </div>
 
-      <div style={{ overflow: 'hidden', minHeight: 0 }}>
+      <div style={{ overflow: 'auto', minHeight: 0 }}>
         <GanttChart
           data={chartData}
           statusOrder={config?.statusOrder ?? []}
           baseUrl={baseUrl}
         />
       </div>
+
+      {/* Markdown description — fixed below chart, sized to content */}
+      {descriptionHtml && (
+        <div
+          className="ish-description"
+          dangerouslySetInnerHTML={{__html: descriptionHtml}}
+        />
+      )}
+
+      {/* Debug: status transition history */}
+      {config?.debugMode && (
+        <div className="ish-debug">
+          <div className="ish-debug__title">Debug: status transition history</div>
+          {chartData.map((issue) => {
+            const issueObj = debugIssues.find((i) => i.id === issue.issueId);
+            const activities = debugActivitiesMap.get(issue.issueId) ?? [];
+            const timeline = getDebugTransitionTimeline(
+              activities,
+              issueObj?.created ?? Date.now()
+            );
+            return (
+              <div key={issue.issueId} className="ish-debug__issue">
+                <div className="ish-debug__issue-title">
+                  <strong>{issue.idReadable}</strong>
+                  {': '}
+                  {issue.summary}
+                  {issue.neverReachedStartStatus && (
+                    <span className="ish-debug__flag"> (never reached start status)</span>
+                  )}
+                </div>
+                {timeline.length === 0 ? (
+                  <div className="ish-debug__no-history">No transition data</div>
+                ) : (
+                  <ol className="ish-debug__transitions">
+                    {timeline.map((entry, idx) => (
+                      <li key={idx} className="ish-debug__transition">
+                        <span className="ish-debug__date">
+                          {new Date(entry.timestamp).toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                          })}
+                        </span>
+                        <span className="ish-debug__arrow"> → </span>
+                        <span className="ish-debug__status">{entry.stateName}</span>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

@@ -185,4 +185,12 @@ export interface IssueStateHistoryData {
   segments: DateSegment[];      // chronological list of status intervals
   overallStart: number;         // Unix ms — start of the first segment
   overallEnd: number;           // Unix ms — end of the last segment
+  // True when the issue never entered the configured start status
+  // (statusOrder[0]). Its segments start from issue creation instead of
+  // the start-status entry time. Consumers can use this to visually flag
+  // such issues (e.g. a note in a tooltip or a legend marker) — segments
+  // before reaching the start status are typically already unconfigured
+  // (isUnconfigured: true) and render gray, but this flag makes the
+  // "never reached start status" case explicit at the issue level.
+  neverReachedStartStatus: boolean;
 }
