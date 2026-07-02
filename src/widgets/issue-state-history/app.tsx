@@ -1,5 +1,6 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { EmbeddableWidgetAPI } from '../../../@types/globals';
+import { WidgetConfig, parseStoredConfig } from './types';
 import './app.css';
 
 interface Props {
@@ -7,6 +8,8 @@ interface Props {
 }
 
 export default function App({ host }: Props) {
+  const [config, setConfig] = useState<WidgetConfig | null>(null);
+
   // ─── Configure event bridge ────────────────────────────────────────────────
   useEffect(() => {
     const handleConfigure = () => {
@@ -20,6 +23,8 @@ export default function App({ host }: Props) {
   useEffect(() => {
     async function init() {
       try {
+        const stored = await host.readConfig<Record<string, string>>();
+        setConfig(parseStoredConfig(stored ?? {}));
         await host.clearError();
       } finally {
         await host.setLoadingAnimationEnabled(false);
