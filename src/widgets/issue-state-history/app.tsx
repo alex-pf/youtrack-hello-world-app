@@ -5,7 +5,7 @@ import DOMPurify from 'dompurify';
 import { EmbeddableWidgetAPI } from '../../../@types/globals';
 import Configuration from './configuration';
 import { WidgetConfig, IssueStateHistoryData, IssueActivityItem, Issue, parseStoredConfig } from './types';
-import { loadIssuesWithActivities, loadIssuesCount } from './resources';
+import { loadIssuesWithActivities, loadIssuesCount, extractCurrentEstimatedDate } from './resources';
 import { buildIssueStateHistoryData, getDebugTransitionTimeline } from './activity-parser';
 import GanttChart from './gantt-chart';
 import './app.css';
@@ -387,6 +387,20 @@ export default function App({ host }: Props) {
                     <span className="ish-debug__flag"> (never reached start status)</span>
                   )}
                 </div>
+                {(() => {
+                  const dateField = issueObj?.fields.find((f) => {
+                    const fieldName = f.projectCustomField?.field?.name?.toLowerCase() ?? '';
+                    return fieldName.includes('estimated') || fieldName.includes('due date') || fieldName.includes('deadline');
+                  });
+                  const extracted = issueObj ? extractCurrentEstimatedDate(issueObj) : null;
+                  return (
+                    <div className="ish-debug__estimate">
+                      Estimated Date raw field: <code>{dateField ? JSON.stringify(dateField.value) : 'field not found'}</code>
+                      {' → extracted: '}
+                      <code>{extracted !== null ? new Date(extracted).toISOString() : 'null'}</code>
+                    </div>
+                  );
+                })()}
                 {timeline.length === 0 ? (
                   <div className="ish-debug__no-history">No transition data</div>
                 ) : (

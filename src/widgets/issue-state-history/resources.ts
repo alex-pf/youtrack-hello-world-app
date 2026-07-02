@@ -185,6 +185,14 @@ export function extractCurrentState(issue: Issue): { id: string; name: string } 
  * activity-parser.ts: language-independent substring match against common
  * English field names ("estimated", "due date", "deadline").
  *
+ * IMPORTANT: unlike enum/state fields (whose `value` is a BundleElement
+ * object with id/name/color), a `DateIssueCustomField`'s `value` in
+ * YouTrack's REST API is typically a RAW PRIMITIVE (a number, or a numeric
+ * string) — not an object. The `value(id,name,localizedName,presentation)`
+ * projection in ISSUE_FIELDS was written for enum fields; against a
+ * primitive it's a no-op and the server just returns the primitive as-is.
+ * So we must check for a primitive FIRST, before assuming an object shape.
+ *
  * @returns Unix ms timestamp, or null if the issue has no Estimated Date
  *   field configured/set at all (per product spec: no value → no flag).
  */
@@ -201,13 +209,23 @@ export function extractCurrentEstimatedDate(issue: Issue): number | null {
 
   const val = dateField.value;
   const single = Array.isArray(val) ? val[0] : val;
-  if (!single) return null;
+  if (single === null || single === undefined) return null;
 
-  // Mirrors the parseDate() helper in activity-parser.ts's
-  // parseEstimateDateChanges(): DateIssueCustomField values are represented
-  // via IssueFieldValue, which doesn't carry `.value` (that's an
-  // ActivityValue-only property) — id/name/presentation is what's actually
-  // populated for a plain field read, so try those in order.
+  // Case 1: raw primitive (number or numeric string) — the common case for
+  // DateIssueCustomField, see the note above.
+  if (typeof single === 'number') {
+    return single > 0 ? single : null;
+  }
+  if (typeof single === 'string') {
+    const asNum = Number(single);
+    if (!isNaN(asNum) && asNum > 0) return asNum;
+    const asDate = Date.parse(single);
+    if (!isNaN(asDate)) return asDate;
+    return null;
+  }
+
+  // Case 2: object shape (id/name/presentation) — fallback in case the API
+  // does wrap the value for this field, or for defensive robustness.
   const idNum = single.id !== undefined ? Number(single.id) : NaN;
   if (!isNaN(idNum) && idNum > 0) return idNum;
 
