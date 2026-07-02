@@ -156,13 +156,9 @@
   user-select: none;
 }
 
-.ish-gantt-svg .ish-indicator--hatch {
-  transition: stroke-opacity 0.15s;
-}
-
-.ish-gantt-svg .ish-indicator--hatch:hover {
-  stroke-opacity: 0.9;
-}
+/* Hatch fill itself has no hover affordance (pointer-events: none, see
+   gantt-chart.tsx) — only the boundary hit rects/lines are interactive,
+   so there's no hatch-wide hover style to define here. */
 
 /* ─── Tooltip ─────────────────────────────────────────────────────────────── */
 .ish-gantt-tooltip {

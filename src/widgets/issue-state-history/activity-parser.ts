@@ -428,6 +428,241 @@ export function buildCurrentEstimateFlagIndicator(
   };
 }
 
+// ─── Blocking period indicators ─────────────────────────────────────────────
+//
+// YouTrack has no single universal "blocked" field — different projects may
+// model it differently. This is a HEURISTIC, UNTESTED against real project
+// data (same situation as the Estimated Date field before its live-data
+// debug pass): we look for *any* custom field whose name matches
+// /blocked|блокирован/i and treat its activity history as on/off blocking
+// transitions, plus a second field matching /reason|причина|blocker/i for
+// the blocking reason text. If a real project uses different field names,
+// this will detect nothing — the debug panel (see getDebugBlockingInfo)
+// surfaces exactly what was/wasn't found so this can be fixed against real
+// data.
+
+const BLOCKED_FIELD_NAME_RE = /blocked|блокирован/i;
+const REASON_FIELD_NAME_RE = /reason|причина|blocker/i;
+// Interpretation of "added value means blocked=true": the value's name or
+// presentation starts with an affirmative token (yes/true/да/блокирован...).
+// This covers a state-bundle-style field with an explicit "Yes"/"Да" value.
+const BLOCKED_TRUE_VALUE_RE = /^(yes|true|да|блокирован)/i;
+
+export interface BlockedTransition {
+  timestamp: number;
+  isBlocked: boolean;
+}
+
+export interface ReasonChange {
+  timestamp: number;
+  reasonText: string;
+}
+
+export interface BlockedInterval {
+  start: number;
+  end: number | null;
+}
+
+export interface ReasonSubPeriod {
+  reasonText: string;
+  since: number;
+}
+
+/**
+ * Finds the first activity's `field.name` matching the given regex, i.e. the
+ * raw custom-field name as returned by the API. Used both to walk that
+ * field's activity history and to surface "which field did we pick" in the
+ * debug panel.
+ */
+function findFieldName(activities: IssueActivityItem[], re: RegExp): string | null {
+  for (const a of activities) {
+    const name = a.field?.name;
+    if (name && re.test(name)) return name;
+  }
+  return null;
+}
+
+/**
+ * Interprets whether an activity's `added` value represents "blocked=true".
+ * Two heuristics, either sufficient:
+ *   1. The added value's name/presentation matches an affirmative token
+ *      (yes/true/да/блокирован...) — covers an explicit enum/state value.
+ *   2. Simple checkbox-style field: added is non-empty/non-null AND removed
+ *      was empty/null (i.e. the field just got a value where it had none) —
+ *      covers a boolean-ish field with no clear "Yes" label.
+ * Both are guesses; see the module doc comment above.
+ */
+function isBlockedTrueActivity(activity: IssueActivityItem): boolean {
+  const addedVals = toActivityValueArray(activity.added);
+  const removedVals = toActivityValueArray(activity.removed);
+  const addedFirst = addedVals[0];
+  if (!addedFirst) return false;
+
+  const label = addedFirst.name ?? addedFirst.presentation ?? '';
+  if (label && BLOCKED_TRUE_VALUE_RE.test(label)) return true;
+
+  const addedIsEmpty = addedVals.length === 0 || (!addedFirst.name && !addedFirst.presentation && addedFirst.value === undefined);
+  const removedIsEmpty = removedVals.length === 0 || (!removedVals[0]?.name && !removedVals[0]?.presentation && removedVals[0]?.value === undefined);
+  return !addedIsEmpty && removedIsEmpty;
+}
+
+/**
+ * Walks activities for the detected "blocked-like" field and builds a
+ * chronological list of on/off transitions.
+ */
+export function parseBlockedTransitions(
+  activities: IssueActivityItem[],
+  blockedFieldName: string
+): BlockedTransition[] {
+  return activities
+    .filter((a) => a.field?.name === blockedFieldName)
+    .sort((a, b) => a.timestamp - b.timestamp)
+    .map((a) => ({
+      timestamp: a.timestamp,
+      isBlocked: isBlockedTrueActivity(a),
+    }));
+}
+
+/**
+ * Walks activities for the detected "reason-like" field and builds a
+ * chronological list of reason-text changes.
+ */
+export function parseReasonChanges(
+  activities: IssueActivityItem[],
+  reasonFieldName: string
+): ReasonChange[] {
+  return activities
+    .filter((a) => a.field?.name === reasonFieldName)
+    .sort((a, b) => a.timestamp - b.timestamp)
+    .map((a) => {
+      const addedVals = toActivityValueArray(a.added);
+      const first = addedVals[0];
+      const reasonText = first?.name ?? first?.presentation ?? (first?.value !== undefined ? String(first.value) : '');
+      return { timestamp: a.timestamp, reasonText };
+    });
+}
+
+/**
+ * Builds blocking INTERVALS from a chronological transition list. Consecutive
+ * on/off/on cycles (even on the same calendar day) always produce SEPARATE
+ * intervals — each `true` transition opens a new interval, each `false`
+ * transition closes the currently-open one. If the transition list ends
+ * while still blocked, the interval's `end` is `stillBlockedEnd` (issue's
+ * resolved timestamp, or now).
+ */
+export function buildBlockedIntervals(
+  transitions: BlockedTransition[],
+  stillBlockedEnd: number
+): BlockedInterval[] {
+  const intervals: BlockedInterval[] = [];
+  let openStart: number | null = null;
+
+  for (const t of transitions) {
+    if (t.isBlocked) {
+      // A new "blocked" transition while one is already open is treated as
+      // a no-op (stay in the same open interval) rather than opening a
+      // duplicate — defensive against redundant activity entries.
+      if (openStart === null) {
+        openStart = t.timestamp;
+      }
+    } else if (openStart !== null) {
+      intervals.push({ start: openStart, end: t.timestamp });
+      openStart = null;
+    }
+  }
+
+  if (openStart !== null) {
+    intervals.push({ start: openStart, end: stillBlockedEnd });
+  }
+
+  return intervals;
+}
+
+/**
+ * For one blocked interval, builds the list of reason sub-periods active
+ * during it: the reason in effect AT interval.start (which may come from a
+ * reason-change that happened BEFORE blocking began but is still the most
+ * recent one), plus every reason-change that falls strictly within
+ * [interval.start, interval.end].
+ */
+export function buildReasonSubPeriods(
+  interval: BlockedInterval,
+  reasonChanges: ReasonChange[]
+): ReasonSubPeriod[] {
+  const intervalEnd = interval.end ?? Infinity;
+  const subPeriods: ReasonSubPeriod[] = [];
+
+  // Reason active at interval start: the latest reason-change at or before
+  // interval.start.
+  let activeAtStart: ReasonChange | null = null;
+  for (const rc of reasonChanges) {
+    if (rc.timestamp <= interval.start) {
+      if (!activeAtStart || rc.timestamp > activeAtStart.timestamp) activeAtStart = rc;
+    }
+  }
+  if (activeAtStart) {
+    subPeriods.push({ reasonText: activeAtStart.reasonText, since: interval.start });
+  }
+
+  // Reason changes strictly within the interval.
+  for (const rc of reasonChanges) {
+    if (rc.timestamp > interval.start && rc.timestamp <= intervalEnd) {
+      subPeriods.push({ reasonText: rc.reasonText, since: rc.timestamp });
+    }
+  }
+
+  return subPeriods;
+}
+
+function formatDateShort(ts: number): string {
+  return new Date(ts).toLocaleDateString();
+}
+
+/**
+ * Builds one 'hatch' ChartIndicator per blocked interval for an issue,
+ * detecting the blocked/reason fields by name heuristic (see module doc
+ * comment). Returns [] if no blocked-like field was found at all, or if the
+ * field was found but produced zero completed/open intervals.
+ */
+export function buildBlockingIndicators(
+  issueId: string,
+  activities: IssueActivityItem[],
+  issueResolvedAt: number | null
+): ChartIndicator[] {
+  const blockedFieldName = findFieldName(activities, BLOCKED_FIELD_NAME_RE);
+  if (!blockedFieldName) return [];
+
+  const reasonFieldName = findFieldName(activities, REASON_FIELD_NAME_RE);
+
+  const transitions = parseBlockedTransitions(activities, blockedFieldName);
+  const stillBlockedEnd = issueResolvedAt ?? Date.now();
+  const intervals = buildBlockedIntervals(transitions, stillBlockedEnd);
+  if (intervals.length === 0) return [];
+
+  const reasonChanges = reasonFieldName ? parseReasonChanges(activities, reasonFieldName) : [];
+
+  return intervals.map((interval, idx) => {
+    const subPeriods = buildReasonSubPeriods(interval, reasonChanges);
+    const tooltipRows = subPeriods.length > 0
+      ? subPeriods.map((sp) => ({
+          label: `с ${formatDateShort(sp.since)}`,
+          value: sp.reasonText || 'Причина не указана',
+        }))
+      : [{ label: `с ${formatDateShort(interval.start)}`, value: 'Причина не указана' }];
+
+    return {
+      kind: 'hatch',
+      semanticType: 'blocking',
+      id: `${issueId}-blocking-${idx}-${interval.start}`,
+      rangeStart: interval.start,
+      rangeEnd: interval.end ?? stillBlockedEnd,
+      tooltipTitle: 'Период блокировки',
+      tooltipRows,
+      color: '#F44336',
+    };
+  });
+}
+
 // ─── Main aggregator ───────────────────────────────────────────────────────────
 
 /**
@@ -474,6 +709,7 @@ export function buildIssueStateHistoryData(
     }
 
     const estimateDateIndicators = buildEstimateDateChangeIndicators(issue.id, activities);
+    const blockingIndicators = buildBlockingIndicators(issue.id, activities, issue.resolved);
 
     const overallStart = segments[0].startDate;
     const currentEstimateDate = extractCurrentEstimatedDate(issue);
@@ -494,7 +730,11 @@ export function buildIssueStateHistoryData(
       // Built as a fresh array from each producer's output, appended together —
       // Task 4 producers should follow the same pattern (compute their own
       // indicator array, then spread it in here) rather than overwriting.
-      indicators: [...estimateDateIndicators, ...(currentEstimateFlag ? [currentEstimateFlag] : [])],
+      indicators: [
+        ...estimateDateIndicators,
+        ...(currentEstimateFlag ? [currentEstimateFlag] : []),
+        ...blockingIndicators,
+      ],
     });
   }
 
@@ -517,4 +757,44 @@ export function getDebugTransitionTimeline(
     timestamp: e.timestamp,
     stateName: e.stateName,
   }));
+}
+
+/**
+ * Exposes the raw blocked/reason field detection results + derived intervals
+ * for one issue, for the widget's debug-mode UI. This is the troubleshooting
+ * hook for the blocked/reason field-name heuristic in
+ * buildBlockingIndicators() — since that heuristic is UNTESTED against real
+ * YouTrack project data, this lets a user with debugMode on see exactly
+ * which field (if any) was detected and what intervals/reasons were derived
+ * from it, so mismatches can be reported and the regexes adjusted. Mirrors
+ * the pattern used for the Estimated Date raw-field debug output in app.tsx.
+ */
+export function getDebugBlockingInfo(
+  activities: IssueActivityItem[],
+  issueResolvedAt: number | null
+): {
+  blockedFieldName: string | null;
+  reasonFieldName: string | null;
+  transitions: BlockedTransition[];
+  intervals: BlockedInterval[];
+  reasonChanges: ReasonChange[];
+  subPeriodsByInterval: ReasonSubPeriod[][];
+} {
+  const blockedFieldName = findFieldName(activities, BLOCKED_FIELD_NAME_RE);
+  const reasonFieldName = findFieldName(activities, REASON_FIELD_NAME_RE);
+
+  const transitions = blockedFieldName ? parseBlockedTransitions(activities, blockedFieldName) : [];
+  const stillBlockedEnd = issueResolvedAt ?? Date.now();
+  const intervals = blockedFieldName ? buildBlockedIntervals(transitions, stillBlockedEnd) : [];
+  const reasonChanges = reasonFieldName ? parseReasonChanges(activities, reasonFieldName) : [];
+  const subPeriodsByInterval = intervals.map((interval) => buildReasonSubPeriods(interval, reasonChanges));
+
+  return {
+    blockedFieldName,
+    reasonFieldName,
+    transitions,
+    intervals,
+    reasonChanges,
+    subPeriodsByInterval,
+  };
 }
