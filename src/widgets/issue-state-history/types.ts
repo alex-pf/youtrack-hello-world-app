@@ -203,4 +203,50 @@ export interface IssueStateHistoryData {
   // (isUnconfigured: true) and render gray, but this flag makes the
   // "never reached start status" case explicit at the issue level.
   neverReachedStartStatus: boolean;
+  // Optional row-level annotations drawn on top of the status segments
+  // (e.g. estimate-date-change markers, an estimate-date flag, blocking
+  // hatching). Empty/undefined until a later task adds a producer — see
+  // ChartIndicator below for the shared data contract.
+  indicators?: ChartIndicator[];
+}
+
+// ─── Chart indicators ───────────────────────────────────────────────────────
+// A uniform data contract for point/range annotations drawn on top of an
+// issue row's status segments. Each concrete indicator "type" (estimate-date
+// -change marker, estimate-date flag, blocking-period hatch, ...) is just a
+// producer that builds ChartIndicator instances; gantt-chart.tsx has exactly
+// ONE rendering path that switches on `kind` to draw them, and one shared
+// tooltip mechanism for all of them. Extend IndicatorKind as new visual
+// treatments are needed — keep this shape minimal, don't add fields without
+// a concrete consumer.
+export type IndicatorKind =
+  | 'marker' // a single point-in-time tick/dot (e.g. "estimate date changed here")
+  | 'flag'   // a point-in-time marker with an adaptive inline label (e.g. current estimate date)
+  | 'hatch'; // a diagonally-hatched date range (e.g. a blocked period)
+
+export interface ChartIndicator {
+  kind: IndicatorKind;
+  id: string;              // stable key for React/D3 data-join
+
+  // Point-in-time indicators (marker, flag).
+  date?: number;            // Unix ms
+
+  // Range indicators (hatch).
+  rangeStart?: number;      // Unix ms
+  rangeEnd?: number;        // Unix ms
+
+  // Adaptive label text shown inline next to a 'flag' indicator when there's
+  // room (see the label-fit heuristic in gantt-chart.tsx). Ignored by other
+  // kinds. Always shown in full inside the tooltip regardless of inline fit.
+  label?: string;
+
+  // Shared tooltip content — reuses the existing buildTooltipHtml/tooltipRef
+  // mechanism, so every indicator kind gets a consistent hover tooltip for
+  // free without each producer reimplementing it.
+  tooltipTitle: string;
+  tooltipRows: { label: string; value: string }[];
+
+  // Optional override color. When omitted, rendering falls back to a
+  // per-kind default (see gantt-chart.tsx / gantt-chart.css).
+  color?: string;
 }

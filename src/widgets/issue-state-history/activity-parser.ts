@@ -289,6 +289,31 @@ export function buildIssueStateHistoryData(
     });
   }
 
+  // TEMP: Task 1 plumbing verification, remove in Task 2/3.
+  // No real indicator producer exists yet (that's tasks 2-4: estimate-change
+  // marker, estimate flag, blocking hatch). This hardcodes one 'flag'
+  // indicator on the first result row purely so a reviewer can visually
+  // confirm the generic indicator rendering path in gantt-chart.tsx actually
+  // draws something end-to-end. Whoever implements the real estimate-date
+  // flag producer (Task 3) should delete this block and wire up real data.
+  if (result.length > 0) {
+    const first = result[0];
+    const flagDate = first.overallStart + (first.overallEnd - first.overallStart) / 2;
+    first.indicators = [
+      {
+        kind: 'flag',
+        id: `${first.issueId}-temp-flag`,
+        date: flagDate,
+        label: new Date(flagDate).toLocaleDateString(),
+        tooltipTitle: 'TEMP: plumbing test flag',
+        tooltipRows: [
+          { label: 'Date', value: new Date(flagDate).toLocaleDateString() },
+          { label: 'Note', value: 'Remove once a real indicator producer exists' },
+        ],
+      },
+    ];
+  }
+
   return result;
 }
 

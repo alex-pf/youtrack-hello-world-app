@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import * as d3 from 'd3';
-import { IssueStateHistoryData, DateSegment, StatusOrderItem, GridStep } from './types';
+import { IssueStateHistoryData, DateSegment, StatusOrderItem, GridStep, ChartIndicator } from './types';
 import './gantt-chart.css';
 
 interface GanttChartProps {
@@ -55,6 +55,32 @@ const STATUS_COLORS = [
 const UNCONFIGURED_COLOR = '#9E9E9E';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+// ─── Indicator defaults ────────────────────────────────────────────────────
+// Per-kind fallback colors, used when a ChartIndicator doesn't set its own
+// `color`. 'hatch' intentionally uses a NEUTRAL gray placeholder for now —
+// Task 4 (blocking hatching) will pass an explicit red `color` to specialize
+// it; this default just proves the rendering plumbing works.
+const INDICATOR_DEFAULT_COLOR: Record<ChartIndicator['kind'], string> = {
+  marker: '#607D8B',
+  flag: '#FF5722',
+  hatch: '#9E9E9E',
+};
+
+// SVG <pattern> id for the diagonal hatch fill, defined once in <defs> and
+// referenced by every 'hatch' indicator via fill="url(#...)".
+const HATCH_PATTERN_ID = 'ish-gantt-hatch-pattern';
+
+// Rough heuristic for estimating rendered text width of a flag's inline
+// label, in px per character, at the label's font-size (10px, see CSS).
+// This is deliberately crude (no canvas measureText call) — it just needs
+// to be conservative enough to avoid obviously-overlapping labels; exact
+// pixel accuracy isn't required per the task spec.
+const FLAG_LABEL_PX_PER_CHAR = 6;
+// Minimum gap (px) we insist on keeping between a flag's label and whatever
+// comes next (next indicator or the row/chart edge), so labels don't butt
+// up against neighboring content even when they technically "fit".
+const FLAG_LABEL_MIN_GAP = 4;
 
 // ─── XSS-safe tooltip builder ─────────────────────────────────────────────────
 function escHtml(s: string): string {
@@ -141,6 +167,17 @@ export default function GanttChart({ data, statusOrder, baseUrl, gridStep }: Gan
       rows.push({ label: 'End', value: new Date(seg.endDate).toLocaleDateString() });
       rows.push({ label: 'Duration', value: `${durationDays.toFixed(1)} days` });
       tooltipEl.innerHTML = buildTooltipHtml(title, rows);
+      tooltipEl.style.display = 'block';
+      moveTooltip(event);
+    };
+
+    // Shared tooltip handler for ALL indicator kinds (marker/flag/hatch) —
+    // every ChartIndicator already carries its own tooltipTitle/tooltipRows,
+    // so this just wires them into the existing tooltip DOM element rather
+    // than each kind reimplementing tooltip logic.
+    const showIndicatorTooltip = (event: MouseEvent, indicator: ChartIndicator) => {
+      if (!tooltipEl) return;
+      tooltipEl.innerHTML = buildTooltipHtml(indicator.tooltipTitle, indicator.tooltipRows);
       tooltipEl.style.display = 'block';
       moveTooltip(event);
     };
@@ -252,6 +289,29 @@ export default function GanttChart({ data, statusOrder, baseUrl, gridStep }: Gan
       .attr('height', totalHeight)
       .attr('aria-label', `Issue State History chart: ${data.length} issues`);
 
+    // ─── <defs>: diagonal hatch pattern for 'hatch' indicators ───────────────
+    // Defined once and referenced by every hatch rect via fill="url(#id)"
+    // rather than faking hatching with many thin rects (per task spec).
+    const defs = svg.append('defs');
+    const hatchPattern = defs.append('pattern')
+      .attr('id', HATCH_PATTERN_ID)
+      .attr('patternUnits', 'userSpaceOnUse')
+      .attr('width', 6)
+      .attr('height', 6)
+      .attr('patternTransform', 'rotate(45)');
+    hatchPattern.append('rect')
+      .attr('width', 6)
+      .attr('height', 6)
+      .attr('fill', INDICATOR_DEFAULT_COLOR.hatch)
+      .attr('fill-opacity', 0.15);
+    hatchPattern.append('line')
+      .attr('x1', 0)
+      .attr('y1', 0)
+      .attr('x2', 0)
+      .attr('y2', 6)
+      .attr('stroke', INDICATOR_DEFAULT_COLOR.hatch)
+      .attr('stroke-width', 3);
+
     const g = svg
       .append('g')
       .attr('transform', `translate(${MARGIN.left},${MARGIN.top})`);
@@ -362,6 +422,156 @@ export default function GanttChart({ data, statusOrder, baseUrl, gridStep }: Gan
           .on('mouseout', function () {
             hideTooltip();
           });
+      });
+    });
+
+    // ─── Indicators (markers/flags/hatches) — rendered AFTER status segments
+    // so they always draw on top, one generic pass shared by every kind. ────
+    rows.each(function (issueData) {
+      const rowG = d3.select(this);
+      const indicators = issueData.indicators;
+      if (!indicators || indicators.length === 0) return;
+
+      // Point-in-time indicators (marker + flag), sorted by date — needed so
+      // the adaptive-label heuristic below can look at "the next indicator"
+      // to decide how much horizontal room a flag's label has.
+      const pointIndicators = indicators
+        .filter((ind) => ind.kind !== 'hatch' && ind.date !== undefined)
+        .sort((a, b) => (a.date ?? 0) - (b.date ?? 0));
+
+      indicators.forEach((indicator) => {
+        const color = indicator.color ?? INDICATOR_DEFAULT_COLOR[indicator.kind];
+
+        if (indicator.kind === 'hatch') {
+          if (indicator.rangeStart === undefined || indicator.rangeEnd === undefined) return;
+          const x1 = xScale(new Date(indicator.rangeStart));
+          const x2 = xScale(new Date(indicator.rangeEnd));
+          const w = x2 - x1;
+          if (w <= 0) return;
+
+          rowG.append('rect')
+            .attr('class', 'ish-indicator ish-indicator--hatch')
+            .attr('x', x1)
+            .attr('y', ROW_PADDING)
+            .attr('width', w)
+            .attr('height', BAR_HEIGHT)
+            .attr('fill', `url(#${HATCH_PATTERN_ID})`)
+            .attr('stroke', color)
+            .attr('stroke-width', 1)
+            .attr('stroke-opacity', 0.5)
+            .on('mouseover', function (event: MouseEvent) {
+              showIndicatorTooltip(event, indicator);
+            })
+            .on('mousemove', function (event: MouseEvent) {
+              moveTooltip(event);
+            })
+            .on('mouseout', function () {
+              hideTooltip();
+            });
+          return;
+        }
+
+        if (indicator.date === undefined) return;
+        const x = xScale(new Date(indicator.date));
+        const cy = ROW_HEIGHT / 2;
+
+        if (indicator.kind === 'marker') {
+          // Small vertical tick, centered in the row.
+          rowG.append('line')
+            .attr('class', 'ish-indicator ish-indicator--marker')
+            .attr('x1', x)
+            .attr('x2', x)
+            .attr('y1', ROW_PADDING)
+            .attr('y2', ROW_PADDING + BAR_HEIGHT)
+            .attr('stroke', color)
+            .attr('stroke-width', 2)
+            .on('mouseover', function (event: MouseEvent) {
+              showIndicatorTooltip(event, indicator);
+            })
+            .on('mousemove', function (event: MouseEvent) {
+              moveTooltip(event);
+            })
+            .on('mouseout', function () {
+              hideTooltip();
+            });
+          return;
+        }
+
+        // kind === 'flag'
+        const flagGroup = rowG.append('g')
+          .attr('class', 'ish-indicator ish-indicator--flag')
+          .on('mouseover', function (event: MouseEvent) {
+            showIndicatorTooltip(event, indicator);
+          })
+          .on('mousemove', function (event: MouseEvent) {
+            moveTooltip(event);
+          })
+          .on('mouseout', function () {
+            hideTooltip();
+          });
+
+        // Flag glyph: a small triangle pennant on a short pole, anchored at
+        // (x, cy). Cheap to draw as a single <path>, no external icon asset.
+        const poleTopY = cy - BAR_HEIGHT / 2;
+        const poleBottomY = cy + BAR_HEIGHT / 2;
+        flagGroup.append('line')
+          .attr('x1', x)
+          .attr('x2', x)
+          .attr('y1', poleTopY)
+          .attr('y2', poleBottomY)
+          .attr('stroke', color)
+          .attr('stroke-width', 1.5);
+        flagGroup.append('path')
+          .attr('d', `M${x},${poleTopY} L${x + 8},${poleTopY + 3} L${x},${poleTopY + 6} Z`)
+          .attr('fill', color);
+
+        // ─── Adaptive inline label heuristic ────────────────────────────
+        // Goal: show indicator.label next to the flag when there's enough
+        // horizontal room, otherwise fall back to tooltip-only (or a
+        // truncated label) so labels never visually collide.
+        //
+        // "Available room" = distance from this flag's x position to the
+        // next point-in-time indicator on the SAME row (if any), or to the
+        // right edge of the chart's plotted area otherwise. We estimate the
+        // label's rendered width as `label.length * FLAG_LABEL_PX_PER_CHAR`
+        // (a fixed px-per-character approximation — no canvas measureText,
+        // per the task's "doesn't need to be pixel-perfect" allowance) and
+        // require FLAG_LABEL_MIN_GAP px of breathing room beyond that.
+        //   - Full label fits  -> render it in full.
+        //   - Nothing fits (not even 1 char) -> skip the inline label
+        //     entirely (tooltip still shows the full text on hover).
+        //   - Partial fits -> truncate to the number of characters that
+        //     fit, appending an ellipsis.
+        if (indicator.label) {
+          const myIndex = pointIndicators.findIndex((p) => p.id === indicator.id);
+          const nextIndicator = myIndex >= 0 ? pointIndicators[myIndex + 1] : undefined;
+          const rightBound = nextIndicator?.date !== undefined
+            ? xScale(new Date(nextIndicator.date))
+            : chartInnerWidth;
+          const labelStartX = x + 10; // small gap after the flag glyph
+          const availablePx = rightBound - labelStartX - FLAG_LABEL_MIN_GAP;
+
+          const fullLabelPx = indicator.label.length * FLAG_LABEL_PX_PER_CHAR;
+          let renderedLabel: string | null = null;
+          if (availablePx >= fullLabelPx) {
+            renderedLabel = indicator.label;
+          } else {
+            const maxChars = Math.floor(availablePx / FLAG_LABEL_PX_PER_CHAR) - 1; // reserve 1 char for "…"
+            if (maxChars > 0) {
+              renderedLabel = `${indicator.label.slice(0, maxChars)}…`;
+            }
+            // else: no room at all — inline label omitted, tooltip only.
+          }
+
+          if (renderedLabel) {
+            flagGroup.append('text')
+              .attr('class', 'ish-indicator__label')
+              .attr('x', labelStartX)
+              .attr('y', cy)
+              .attr('dominant-baseline', 'middle')
+              .text(renderedLabel);
+          }
+        }
       });
     });
 
