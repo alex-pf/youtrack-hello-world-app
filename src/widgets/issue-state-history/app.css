@@ -85,3 +85,132 @@
   padding: 1px 5px;
   flex-shrink: 0;
 }
+
+/* ─── Markdown Description ───────────────────────────────────────────────── */
+
+.ish-description {
+  padding: 12px 16px;
+  border-top: 1px solid var(--ring-line-color);
+  font-size: var(--ring-font-size);
+  color: var(--ring-text-color);
+  line-height: 1.6;
+  overflow: auto;
+  max-height: 30vh;
+}
+
+.ish-description h1,
+.ish-description h2,
+.ish-description h3 {
+  margin: 0.6em 0 0.3em;
+  color: var(--ring-text-color);
+  font-weight: 600;
+}
+
+.ish-description > :first-child {
+  margin-top: 0;
+}
+
+.ish-description > :last-child {
+  margin-bottom: 0;
+}
+
+.ish-description p {
+  margin: 0.4em 0;
+}
+
+.ish-description ul,
+.ish-description ol {
+  padding-left: 1.4em;
+  margin: 0.4em 0;
+}
+
+.ish-description code {
+  font-family: var(--ring-font-family-monospace, monospace);
+  background: var(--ring-hover-background-color);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+
+.ish-description a {
+  color: var(--ring-link-color);
+}
+
+/* ─── Debug Panel ─────────────────────────────────────────────────────────── */
+
+.ish-debug {
+  margin-top: 16px;
+  padding: 12px 16px;
+  border-top: 2px solid var(--ring-warning-color, #c47900);
+  background: var(--ring-content-background-color);
+  font-size: var(--ring-font-size-smaller);
+  overflow-y: auto;
+  max-height: 400px;
+}
+
+.ish-debug__title {
+  font-weight: 700;
+  font-size: var(--ring-font-size);
+  color: var(--ring-warning-color, #c47900);
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.ish-debug__issue {
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--ring-line-color);
+}
+
+.ish-debug__issue:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.ish-debug__issue-title {
+  color: var(--ring-text-color);
+  margin-bottom: 4px;
+  font-size: var(--ring-font-size);
+}
+
+.ish-debug__flag {
+  color: var(--ring-warning-color, #c47900);
+  font-style: italic;
+}
+
+.ish-debug__no-history {
+  color: var(--ring-secondary-color);
+  font-style: italic;
+  padding-left: 8px;
+}
+
+.ish-debug__transitions {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 8px;
+}
+
+.ish-debug__transition {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0;
+  color: var(--ring-text-color);
+}
+
+.ish-debug__date {
+  font-family: var(--ring-font-family-monospace, monospace);
+  color: var(--ring-secondary-color);
+  min-width: 90px;
+}
+
+.ish-debug__arrow {
+  color: var(--ring-secondary-color);
+}
+
+.ish-debug__status {
+  font-weight: 500;
+  color: var(--ring-text-color);
+}

@@ -105,6 +105,17 @@ function buildTransitionTimeline(
 // ─── Date-based segment builder ────────────────────────────────────────────────
 
 /**
+ * Result of buildDateSegments(): the segments plus whether the issue ever
+ * reached the configured start status.
+ */
+export interface DateSegmentsResult {
+  segments: DateSegment[];
+  // True when the issue never entered statusOrder[0] and segments therefore
+  // start from issue creation instead of the start-status entry time.
+  neverReachedStartStatus: boolean;
+}
+
+/**
  * Builds absolute-calendar-date segments for a single issue's state history.
  *
  * Behavior:
@@ -114,17 +125,19 @@ function buildTransitionTimeline(
  *   it's in `statusOrder`. Statuses not found in `statusOrder` are tagged
  *   `isUnconfigured: true` / `statusId: null` so the chart can render them
  *   as gray bars instead of dropping them (per product requirement).
- * - The returned array is TRIMMED to start at the first segment whose status
- *   matches `statusOrder[0]` (the configured "start" status). Any segments
- *   before the issue first entered the start status are discarded — the
- *   chart's date axis begins at the start status, not at issue creation.
+ * - If the issue's history includes a segment matching `statusOrder[0]`
+ *   (the configured "start" status), the returned array is TRIMMED to start
+ *   there — segments before the issue first entered the start status are
+ *   discarded, so the chart's date axis begins at the start status.
  *   EXCEPTION: if the issue's very first recorded state IS statusOrder[0],
  *   that segment's startDate is issueCreatedAt (nothing to trim).
  * - If the issue NEVER enters statusOrder[0] (e.g. it skipped straight from
- *   "Open" to "Done" and "Open" isn't the start status, or it never left an
- *   initial unconfigured state), this function returns an EMPTY array. The
- *   caller (buildIssueStateHistoryData) excludes such issues from the chart
- *   entirely — see its docstring for rationale.
+ *   "Open" to "Done" and "Open" isn't the start status, or `statusOrder` is
+ *   empty/unconfigured), NO segments are dropped. Per product requirement
+ *   ("if an issue matches the search query, it must be visible on the
+ *   chart"), the full timeline starting at issue creation is returned
+ *   instead, and `neverReachedStartStatus` is set to true so callers can
+ *   flag these issues distinctly (e.g. a tooltip note or legend marker).
  * - The LAST segment's endDate is `issueResolvedAt` when the issue is
  *   resolved/closed, otherwise `Date.now()` (the issue is still open and its
  *   current status is ongoing "as of now").
@@ -132,20 +145,18 @@ function buildTransitionTimeline(
  * @param activities - Raw activity items for one issue (unfiltered)
  * @param issueCreatedAt - Unix ms timestamp the issue was created
  * @param issueResolvedAt - Unix ms timestamp the issue was resolved, or null if still open
- * @param statusOrder - Ordered list of configured statuses; statusOrder[0] is the "start" status
- * @returns Chronological array of DateSegment, or [] if the issue never entered the start status
+ * @param statusOrder - Ordered list of configured statuses; statusOrder[0] is the "start" status (may be empty if unconfigured)
+ * @returns { segments, neverReachedStartStatus } — segments is [] only when
+ *   the issue has no usable transition/creation timeline at all
  */
 export function buildDateSegments(
   activities: IssueActivityItem[],
   issueCreatedAt: number,
   issueResolvedAt: number | null,
   statusOrder: StatusOrderItem[]
-): DateSegment[] {
-  if (statusOrder.length === 0) return [];
-  const startStatus = statusOrder[0];
-
+): DateSegmentsResult {
   const timeline = buildTransitionTimeline(activities, issueCreatedAt);
-  if (timeline.length === 0) return [];
+  if (timeline.length === 0) return { segments: [], neverReachedStartStatus: statusOrder.length > 0 };
 
   // Map for quick "is this state configured" lookups (case-insensitive name, or id match)
   const configuredByName = new Map<string, StatusOrderItem>();
@@ -159,7 +170,13 @@ export function buildDateSegments(
     return (stateId ? configuredById.get(stateId) : undefined) ?? configuredByName.get(stateName.toLowerCase());
   }
 
+  // statusOrder may be empty if the user hasn't configured statuses yet —
+  // in that case there is no start status to match against, so nothing is
+  // trimmed and every issue is treated as "never reached start status".
+  const startStatus = statusOrder.length > 0 ? statusOrder[0] : null;
+
   const isStartStatus = (stateName: string, stateId: string): boolean => {
+    if (!startStatus) return false;
     if (stateId && startStatus.id) return stateId === startStatus.id;
     return stateName.toLowerCase() === startStatus.name.toLowerCase();
   };
@@ -191,11 +208,12 @@ export function buildDateSegments(
   );
 
   if (startIndex === -1) {
-    // Issue never entered the configured start status — exclude from chart.
-    return [];
+    // Issue never entered the configured start status (or none is
+    // configured) — keep the full timeline from creation, but flag it.
+    return { segments: allSegments, neverReachedStartStatus: true };
   }
 
-  return allSegments.slice(startIndex);
+  return { segments: allSegments.slice(startIndex), neverReachedStartStatus: false };
 }
 
 // ─── Main aggregator ───────────────────────────────────────────────────────────
@@ -203,15 +221,20 @@ export function buildDateSegments(
 /**
  * Combines issues with their activity history into date-segmented chart data.
  *
- * Issues that never entered the configured start status (statusOrder[0]) are
- * excluded from the result entirely — buildDateSegments() returns [] for
- * them, and there's nothing meaningful to plot on a calendar-date axis
- * without a defined starting point.
+ * Every issue passed in is included in the result — per product requirement,
+ * an issue that matches the search query must be visible on the chart even
+ * if it never entered the configured start status (statusOrder[0]). In that
+ * case buildDateSegments() falls back to the full timeline from issue
+ * creation and marks `neverReachedStartStatus: true` on the returned entry.
+ *
+ * The only issues skipped are ones with literally no usable timeline (no
+ * state-change activity AND no creation timestamp) — see the zero-segments
+ * guard below.
  *
  * @param issues - Issues from loadIssues()
  * @param activitiesMap - Map of issueId -> raw activities from loadActivitiesBatch()
- * @param statusOrder - Ordered statuses from widget config; statusOrder[0] is the "start" status
- * @returns Array of IssueStateHistoryData, one per included issue
+ * @param statusOrder - Ordered statuses from widget config; statusOrder[0] is the "start" status (may be empty)
+ * @returns Array of IssueStateHistoryData, one per issue with a usable timeline
  */
 export function buildIssueStateHistoryData(
   issues: Issue[],
@@ -222,7 +245,7 @@ export function buildIssueStateHistoryData(
 
   for (const issue of issues) {
     const activities = activitiesMap.get(issue.id) ?? [];
-    const segments = buildDateSegments(
+    const { segments, neverReachedStartStatus } = buildDateSegments(
       activities,
       issue.created ?? Date.now(),
       issue.resolved,
@@ -230,7 +253,11 @@ export function buildIssueStateHistoryData(
     );
 
     if (segments.length === 0) {
-      // Issue never entered the configured start status — exclude from chart.
+      // No usable timeline at all (no state-change activity and — in
+      // practice — a missing/invalid created timestamp). Skip rather than
+      // render a broken zero-width row; this should be rare since
+      // buildDateSegments() now falls back to issue.created whenever
+      // possible.
       continue;
     }
 
@@ -241,8 +268,27 @@ export function buildIssueStateHistoryData(
       segments,
       overallStart: segments[0].startDate,
       overallEnd: segments[segments.length - 1].endDate,
+      neverReachedStartStatus,
     });
   }
 
   return result;
+}
+
+// ─── Debug helper ────────────────────────────────────────────────────────────
+
+/**
+ * Exposes the raw parsed transition timeline for one issue, for use by the
+ * widget's debug-mode UI (shows timestamp + state name per issue). Thin
+ * wrapper around buildTransitionTimeline() — kept minimal since this is
+ * debug-only, not a new feature.
+ */
+export function getDebugTransitionTimeline(
+  activities: IssueActivityItem[],
+  issueCreatedAt: number
+): { timestamp: number; stateName: string }[] {
+  return buildTransitionTimeline(activities, issueCreatedAt).map((e) => ({
+    timestamp: e.timestamp,
+    stateName: e.stateName,
+  }));
 }
