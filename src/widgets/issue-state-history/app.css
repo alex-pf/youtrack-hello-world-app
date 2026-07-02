@@ -6,3 +6,82 @@
   min-height: 100px;
   color: var(--ring-text-color);
 }
+
+/* ── Configuration UI ─────────────────────────────────────────────────────── */
+
+.ish-section-label {
+  font-size: var(--ring-font-size-smaller);
+  color: var(--ring-secondary-color);
+  margin: 8px 0 4px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: block;
+}
+
+.ish-note {
+  font-size: var(--ring-font-size-smaller);
+  color: var(--ring-secondary-color);
+  font-style: italic;
+  margin: 4px 0;
+}
+
+/* ── Status Sorter ────────────────────────────────────────────────────────── */
+
+.ish-status-sorter {
+  margin: 8px 0;
+}
+
+.ish-status-sorter__available {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.ish-status-sorter__ordered {
+  border: 1px solid var(--ring-borders-color);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.ish-status-sorter__item {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  background: var(--ring-content-background-color);
+  border-bottom: 1px solid var(--ring-line-color);
+  gap: 8px;
+}
+
+.ish-status-sorter__item:last-child {
+  border-bottom: none;
+}
+
+.ish-status-sorter__item:hover {
+  background: var(--ring-hover-background-color);
+}
+
+.ish-status-sorter__item-name {
+  flex: 1;
+  font-size: var(--ring-font-size);
+  color: var(--ring-text-color);
+}
+
+.ish-status-sorter__color-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.ish-status-sorter__start-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--ring-selected-background-color, #fff);
+  background: var(--ring-main-color);
+  border-radius: 3px;
+  padding: 1px 5px;
+  flex-shrink: 0;
+}
