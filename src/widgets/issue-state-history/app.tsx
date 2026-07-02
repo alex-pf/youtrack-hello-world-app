@@ -6,7 +6,7 @@ import { EmbeddableWidgetAPI } from '../../../@types/globals';
 import Configuration from './configuration';
 import { WidgetConfig, IssueStateHistoryData, IssueActivityItem, Issue, parseStoredConfig } from './types';
 import { loadIssuesWithActivities, loadIssuesCount, extractCurrentEstimatedDate } from './resources';
-import { buildIssueStateHistoryData, getDebugTransitionTimeline } from './activity-parser';
+import { buildIssueStateHistoryData, getDebugTransitionTimeline, getDebugBlockingInfo } from './activity-parser';
 import GanttChart from './gantt-chart';
 import './app.css';
 
@@ -29,6 +29,7 @@ interface IndicatorTypeOption {
 const INDICATOR_TYPE_OPTIONS: IndicatorTypeOption[] = [
   { semanticType: 'estimate-date-change', label: 'Estimate Date change' },
   { semanticType: 'estimate-date-current', label: 'Current Estimate Date' },
+  { semanticType: 'blocking', label: 'Blocking periods' },
 ];
 
 export default function App({ host }: Props) {
@@ -398,6 +399,30 @@ export default function App({ host }: Props) {
                       Estimated Date raw field: <code>{dateField ? JSON.stringify(dateField.value) : 'field not found'}</code>
                       {' → extracted: '}
                       <code>{extracted !== null ? new Date(extracted).toISOString() : 'null'}</code>
+                    </div>
+                  );
+                })()}
+                {(() => {
+                  // Debug for the Task 4 blocking-period heuristic — UNTESTED
+                  // against real project data, see activity-parser.ts doc
+                  // comment above buildBlockingIndicators(). Surfaces which
+                  // field (if any) matched the /blocked|блокирован/i and
+                  // /reason|причина|blocker/i name regexes, plus the raw
+                  // transitions/intervals/reason sub-periods derived from
+                  // them, so a mismatch against the real field names/shapes
+                  // can be diagnosed and reported.
+                  const blockingInfo = getDebugBlockingInfo(activities, issueObj?.resolved ?? null);
+                  return (
+                    <div className="ish-debug__estimate">
+                      Blocked field: <code>{blockingInfo.blockedFieldName ?? 'not found'}</code>
+                      {' | '}
+                      Reason field: <code>{blockingInfo.reasonFieldName ?? 'not found'}</code>
+                      <br />
+                      Transitions: <code>{JSON.stringify(blockingInfo.transitions)}</code>
+                      <br />
+                      Intervals: <code>{JSON.stringify(blockingInfo.intervals)}</code>
+                      <br />
+                      Reason sub-periods per interval: <code>{JSON.stringify(blockingInfo.subPeriodsByInterval)}</code>
                     </div>
                   );
                 })()}

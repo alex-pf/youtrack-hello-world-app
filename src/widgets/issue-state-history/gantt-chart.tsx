@@ -65,13 +65,15 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 // ─── Indicator defaults ────────────────────────────────────────────────────
 // Per-kind fallback colors, used when a ChartIndicator doesn't set its own
-// `color`. 'hatch' intentionally uses a NEUTRAL gray placeholder for now —
-// Task 4 (blocking hatching) will pass an explicit red `color` to specialize
-// it; this default just proves the rendering plumbing works.
+// `color`. 'hatch' now defaults to red — blocking periods (Task 4) are the
+// only real hatch consumer, and they already pass color: '#F44336'
+// explicitly, but the shared default is updated too (rather than kept as
+// the old neutral-gray placeholder) since any future hatch producer would
+// almost certainly also want a "this is a problem period" red by default.
 const INDICATOR_DEFAULT_COLOR: Record<ChartIndicator['kind'], string> = {
   marker: '#607D8B',
   flag: '#FF5722',
-  hatch: '#9E9E9E',
+  hatch: '#F44336',
 };
 
 // SVG <pattern> id for the diagonal hatch fill, defined once in <defs> and
@@ -466,25 +468,56 @@ export default function GanttChart({ data, statusOrder, baseUrl, gridStep, visib
           const w = x2 - x1;
           if (w <= 0) return;
 
-          rowG.append('rect')
-            .attr('class', 'ish-indicator ish-indicator--hatch')
+          const hatchGroup = rowG.append('g')
+            .attr('class', 'ish-indicator ish-indicator--hatch');
+
+          // Fill rect: purely visual, deliberately NOT interactive
+          // (pointer-events: none) so the light hatching never blocks
+          // hovering the underlying status segments / other indicators in
+          // the middle of a blocked period — per product spec, the tooltip
+          // must only trigger on the boundary edges (hit rects below).
+          hatchGroup.append('rect')
             .attr('x', x1)
             .attr('y', ROW_PADDING)
             .attr('width', w)
             .attr('height', BAR_HEIGHT)
             .attr('fill', `url(#${HATCH_PATTERN_ID})`)
-            .attr('stroke', color)
-            .attr('stroke-width', 1)
-            .attr('stroke-opacity', 0.5)
-            .on('mouseover', function (event: MouseEvent) {
-              showIndicatorTooltip(event, indicator);
-            })
-            .on('mousemove', function (event: MouseEvent) {
-              moveTooltip(event);
-            })
-            .on('mouseout', function () {
-              hideTooltip();
-            });
+            .attr('stroke', 'none')
+            .attr('pointer-events', 'none');
+
+          // Boundary hit rects + visible edge lines — one pair per edge
+          // (rangeStart, rangeEnd), mirroring the marker/flag hit-rect
+          // pattern: invisible wide hit rect carries the event handlers,
+          // a thin visible line (pointer-events: none) shows where to hover.
+          [indicator.rangeStart, indicator.rangeEnd].forEach((boundaryDate) => {
+            const bx = xScale(new Date(boundaryDate as number));
+
+            hatchGroup.append('rect')
+              .attr('class', 'ish-indicator__hit')
+              .attr('x', bx - INDICATOR_HIT_WIDTH / 2)
+              .attr('y', 0)
+              .attr('width', INDICATOR_HIT_WIDTH)
+              .attr('height', ROW_HEIGHT)
+              .attr('fill', 'transparent')
+              .on('mouseover', function (event: MouseEvent) {
+                showIndicatorTooltip(event, indicator);
+              })
+              .on('mousemove', function (event: MouseEvent) {
+                moveTooltip(event);
+              })
+              .on('mouseout', function () {
+                hideTooltip();
+              });
+
+            hatchGroup.append('line')
+              .attr('x1', bx)
+              .attr('x2', bx)
+              .attr('y1', ROW_PADDING)
+              .attr('y2', ROW_PADDING + BAR_HEIGHT)
+              .attr('stroke', color)
+              .attr('stroke-width', 1.5)
+              .attr('pointer-events', 'none');
+          });
           return;
         }
 
