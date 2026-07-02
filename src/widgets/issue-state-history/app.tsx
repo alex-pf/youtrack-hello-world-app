@@ -28,6 +28,7 @@ interface IndicatorTypeOption {
 
 const INDICATOR_TYPE_OPTIONS: IndicatorTypeOption[] = [
   { semanticType: 'estimate-date-change', label: 'Estimate Date change' },
+  { semanticType: 'estimate-date-current', label: 'Current Estimate Date' },
 ];
 
 export default function App({ host }: Props) {

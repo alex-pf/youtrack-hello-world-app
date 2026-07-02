@@ -7,9 +7,18 @@ import {
   IssueStateHistoryData,
   ChartIndicator,
 } from './types';
-import { extractCurrentState } from './resources';
+import { extractCurrentState, extractCurrentEstimatedDate } from './resources';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Short readable date format matching the "%d %b" style used by
+// gantt-chart.tsx's axis tickFormat (e.g. "25 Jun").
+const shortDateFormatter = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short' });
+function formatShortDate(ts: number): string {
+  return shortDateFormatter.format(new Date(ts));
+}
 
 function toActivityValueArray(val: ActivityValue[] | ActivityValue | null): ActivityValue[] {
   if (!val) return [];
@@ -360,6 +369,65 @@ export function buildEstimateDateChangeIndicators(
   }));
 }
 
+/**
+ * Builds a single 'flag' ChartIndicator marking an issue's CURRENT Estimated
+ * Date value (as opposed to buildEstimateDateChangeIndicators, which marks
+ * every point in time the field was CHANGED). Per product spec: "Изобразим
+ * его флажком. Подпись: <date>, LT<лид тайм к этой дате>" — a flag glyph at
+ * the current Estimated Date, labeled with the date and the lead time (in
+ * days, or weeks past 28 days) from the issue's start to that date.
+ *
+ * Returns null when the issue has no current Estimated Date value at all
+ * (never set) — per product spec, no flag should be rendered in that case.
+ *
+ * Label format: `${dateStr}, LT-${ltStr}` — e.g. "25 Jun, LT-45d" or
+ * "25 Jun, LT-6w". Note the order is date-first-then-LT here, which is the
+ * REVERSE of issues-progress's "LT-{ltStr}; {dateStr}" precedent — this is
+ * intentional per the product spec's explicit wording ("<date>, LT...").
+ * The day/week rounding convention (>28 days => weeks) is reused as-is from
+ * issues-progress/gantt-chart.tsx's showProjectedLT block.
+ *
+ * Edge case: if leadTimeDays <= 0 (the estimated date is before the issue
+ * even started — e.g. a stale estimate on an issue whose start status was
+ * re-entered later), the flag still renders but the label omits the LT
+ * part entirely (just the date), since a negative/zero lead time isn't a
+ * meaningful number to show inline. The tooltip's Lead Time row still shows
+ * the raw (possibly negative) day count for full transparency.
+ */
+export function buildCurrentEstimateFlagIndicator(
+  issue: Issue,
+  overallStart: number,
+  currentEstimateDate: number | null
+): ChartIndicator | null {
+  if (currentEstimateDate === null) return null;
+
+  const dateStr = formatShortDate(currentEstimateDate);
+  const leadTimeDays = (currentEstimateDate - overallStart) / DAY_MS;
+
+  let label: string;
+  if (leadTimeDays > 0) {
+    const ltStr = leadTimeDays > 28
+      ? `${Math.round(leadTimeDays / 7)}w`
+      : `${Math.round(leadTimeDays)}d`;
+    label = `${dateStr}, LT-${ltStr}`;
+  } else {
+    label = dateStr;
+  }
+
+  return {
+    kind: 'flag',
+    semanticType: 'estimate-date-current',
+    id: `${issue.id}-estimate-current`,
+    date: currentEstimateDate,
+    label,
+    tooltipTitle: 'Текущий Estimated Date',
+    tooltipRows: [
+      { label: 'Дата', value: dateStr },
+      { label: 'Lead Time', value: `${Math.round(leadTimeDays)} дн.` },
+    ],
+  };
+}
+
 // ─── Main aggregator ───────────────────────────────────────────────────────────
 
 /**
@@ -407,18 +475,26 @@ export function buildIssueStateHistoryData(
 
     const estimateDateIndicators = buildEstimateDateChangeIndicators(issue.id, activities);
 
+    const overallStart = segments[0].startDate;
+    const currentEstimateDate = extractCurrentEstimatedDate(issue);
+    const currentEstimateFlag = buildCurrentEstimateFlagIndicator(
+      issue,
+      overallStart,
+      currentEstimateDate
+    );
+
     result.push({
       issueId: issue.id,
       idReadable: issue.idReadable,
       summary: issue.summary,
       segments,
-      overallStart: segments[0].startDate,
+      overallStart,
       overallEnd: segments[segments.length - 1].endDate,
       neverReachedStartStatus,
       // Built as a fresh array from each producer's output, appended together —
-      // Task 3/4 producers should follow the same pattern (compute their own
+      // Task 4 producers should follow the same pattern (compute their own
       // indicator array, then spread it in here) rather than overwriting.
-      indicators: [...estimateDateIndicators],
+      indicators: [...estimateDateIndicators, ...(currentEstimateFlag ? [currentEstimateFlag] : [])],
     });
   }
 

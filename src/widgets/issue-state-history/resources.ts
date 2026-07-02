@@ -170,6 +170,60 @@ export function extractCurrentState(issue: Issue): { id: string; name: string } 
   return { id: single.id ?? '', name: single.name };
 }
 
+/**
+ * Reads an issue's CURRENT Estimated Date custom field value, if set.
+ *
+ * Approach (b) from the task spec: read directly from the issue's `fields`
+ * array (already fetched via ISSUE_FIELDS, which includes the generic
+ * `fields(...)` selector added for extractCurrentState) rather than
+ * inferring it from the last "Estimated Date changed" activity. This is
+ * more reliable — it always reflects the true current value, including
+ * issues where the field was set at creation time and never subsequently
+ * changed (which would have NO activity entry for approach (a)).
+ *
+ * Field name matching mirrors parseEstimateDateChanges() in
+ * activity-parser.ts: language-independent substring match against common
+ * English field names ("estimated", "due date", "deadline").
+ *
+ * @returns Unix ms timestamp, or null if the issue has no Estimated Date
+ *   field configured/set at all (per product spec: no value → no flag).
+ */
+export function extractCurrentEstimatedDate(issue: Issue): number | null {
+  const dateField = issue.fields.find((f) => {
+    const fieldName = f.projectCustomField?.field?.name?.toLowerCase() ?? '';
+    return (
+      fieldName.includes('estimated') ||
+      fieldName.includes('due date') ||
+      fieldName.includes('deadline')
+    );
+  });
+  if (!dateField) return null;
+
+  const val = dateField.value;
+  const single = Array.isArray(val) ? val[0] : val;
+  if (!single) return null;
+
+  // Mirrors the parseDate() helper in activity-parser.ts's
+  // parseEstimateDateChanges(): DateIssueCustomField values are represented
+  // via IssueFieldValue, which doesn't carry `.value` (that's an
+  // ActivityValue-only property) — id/name/presentation is what's actually
+  // populated for a plain field read, so try those in order.
+  const idNum = single.id !== undefined ? Number(single.id) : NaN;
+  if (!isNaN(idNum) && idNum > 0) return idNum;
+
+  if (single.name) {
+    const nameNum = Number(single.name);
+    if (!isNaN(nameNum) && nameNum > 0) return nameNum;
+  }
+
+  if (single.presentation) {
+    const parsed = Date.parse(single.presentation);
+    if (!isNaN(parsed)) return parsed;
+  }
+
+  return null;
+}
+
 export async function loadIssues(
   host: EmbeddableWidgetAPI,
   search: string,
