@@ -56,7 +56,8 @@ export default defineConfig({
       input: {
         helloWorld: resolve(__dirname, 'src/widgets/hello-world/index.html'),
         issuesTable: resolve(__dirname, 'src/widgets/issues-table/index.html'),
-        issuesProgress: resolve(__dirname, 'src/widgets/issues-progress/index.html')
+        issuesProgress: resolve(__dirname, 'src/widgets/issues-progress/index.html'),
+        issueStateHistory: resolve(__dirname, 'src/widgets/issue-state-history/index.html')
       }
     }
   }
