@@ -26,6 +26,24 @@ function toActivityValueArray(val: ActivityValue[] | ActivityValue | null): Acti
   return [val];
 }
 
+/**
+ * Extracts a display string from a single activity value entry, tolerating
+ * the entry being a RAW PRIMITIVE (string) rather than an ActivityValue
+ * object. This matters for single-line text custom fields (e.g. "Reason for
+ * blocking"): unlike enum/state-bundle fields, YouTrack's activity API
+ * typically represents a plain text field's added/removed value as a bare
+ * string, not `{ name, presentation, ... }` — same class of surprise as the
+ * DateIssueCustomField-is-a-primitive lesson learned earlier for
+ * extractCurrentEstimatedDate(). Falls back to id/name/presentation/value
+ * for object-shaped entries (enum fields etc).
+ */
+function extractActivityValueText(val: ActivityValue | undefined): string {
+  if (val === undefined || val === null) return '';
+  if (typeof val === 'string') return val;
+  if (typeof val === 'number') return String(val);
+  return val.name ?? val.presentation ?? (val.value !== undefined ? String(val.value) : '');
+}
+
 function toDateString(timestampMs: number): string {
   return new Date(timestampMs).toISOString().slice(0, 10); // YYYY-MM-DD
 }
@@ -446,7 +464,12 @@ const REASON_FIELD_NAME_RE = /reason|причина|blocker/i;
 // Interpretation of "added value means blocked=true": the value's name or
 // presentation starts with an affirmative token (yes/true/да/блокирован...).
 // This covers a state-bundle-style field with an explicit "Yes"/"Да" value.
-const BLOCKED_TRUE_VALUE_RE = /^(yes|true|да|блокирован)/i;
+// Confirmed against a real "Blocked?" field: values are "Blocked" (blocked),
+// "Need for discuss" and "Muving" (both not-blocked) — an enum/state-bundle
+// field, not a boolean checkbox. Only a value literally starting with
+// "Blocked"/"Заблокирован" counts as blocked=true; any other enum value
+// (including ones we haven't seen) is treated as not-blocked.
+const BLOCKED_TRUE_VALUE_RE = /^(yes|true|да|blocked|блокирован)/i;
 
 export interface BlockedTransition {
   timestamp: number;
@@ -494,13 +517,22 @@ function findFieldName(activities: IssueActivityItem[], re: RegExp): string | nu
  */
 function isBlockedTrueActivity(activity: IssueActivityItem): boolean {
   const addedVals = toActivityValueArray(activity.added);
-  const removedVals = toActivityValueArray(activity.removed);
   const addedFirst = addedVals[0];
   if (!addedFirst) return false;
 
   const label = addedFirst.name ?? addedFirst.presentation ?? '';
-  if (label && BLOCKED_TRUE_VALUE_RE.test(label)) return true;
+  if (label) {
+    // Enum/state-bundle field with a real label (e.g. "Blocked?"'s three
+    // values): match against the affirmative-token regex exactly, no
+    // fallback — this is reliable once the field's label is present, and
+    // avoids misclassifying a first-ever change to a non-blocking value
+    // (e.g. unset -> "Need for discuss") as blocked=true.
+    return BLOCKED_TRUE_VALUE_RE.test(label);
+  }
 
+  // No label at all (neither name nor presentation) — fall back to a
+  // checkbox-style heuristic: added got a value where removed had none.
+  const removedVals = toActivityValueArray(activity.removed);
   const addedIsEmpty = addedVals.length === 0 || (!addedFirst.name && !addedFirst.presentation && addedFirst.value === undefined);
   const removedIsEmpty = removedVals.length === 0 || (!removedVals[0]?.name && !removedVals[0]?.presentation && removedVals[0]?.value === undefined);
   return !addedIsEmpty && removedIsEmpty;
@@ -536,8 +568,7 @@ export function parseReasonChanges(
     .sort((a, b) => a.timestamp - b.timestamp)
     .map((a) => {
       const addedVals = toActivityValueArray(a.added);
-      const first = addedVals[0];
-      const reasonText = first?.name ?? first?.presentation ?? (first?.value !== undefined ? String(first.value) : '');
+      const reasonText = extractActivityValueText(addedVals[0]);
       return { timestamp: a.timestamp, reasonText };
     });
 }
