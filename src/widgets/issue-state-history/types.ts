@@ -152,7 +152,7 @@ export interface IssueLinkActivityItem {
   id: string;
   timestamp: number;
   author: ActivityAuthor;
-  category: { id: string };        // expected "LinksCategory" — see risks (UNTESTED against real data)
+  category: { id: string };        // confirmed "LinksCategory" against a live instance
   // For link activities, `field.name` is typically the DIRECTIONAL wording
   // used for this specific activity (e.g. "Родитель для" on the parent side,
   // "Подзадача для" on the child side of the very same link type) — unlike
