@@ -650,10 +650,52 @@ function formatDateShort(ts: number): string {
 }
 
 /**
- * Builds one 'hatch' ChartIndicator per blocked interval for an issue,
- * detecting the blocked/reason fields by name heuristic (see module doc
- * comment). Returns [] if no blocked-like field was found at all, or if the
- * field was found but produced zero completed/open intervals.
+ * Groups intervals into chains where one interval's end and the next
+ * interval's start fall on the SAME calendar day (e.g. blocking was lifted
+ * and reapplied later the same day). Each group's tooltip shows every
+ * member interval's own date range plus their combined duration/reasons —
+ * per product spec: "с <date> по <date> / с <date> по <date> (если конец
+ * одной блокировки и начало другой в один день)".
+ */
+function groupAdjacentSameDayIntervals(intervals: BlockedInterval[]): BlockedInterval[][] {
+  const groups: BlockedInterval[][] = [];
+  let current: BlockedInterval[] = [];
+
+  for (const interval of intervals) {
+    const prev = current[current.length - 1];
+    const sameDayAsPrev = prev?.end !== null && prev?.end !== undefined
+      && toDateString(prev.end) === toDateString(interval.start);
+    if (current.length === 0 || sameDayAsPrev) {
+      current.push(interval);
+    } else {
+      groups.push(current);
+      current = [interval];
+    }
+  }
+  if (current.length > 0) groups.push(current);
+
+  return groups;
+}
+
+/**
+ * Builds one 'hatch' ChartIndicator per blocked interval for an issue (so
+ * each interval renders as its own visually distinct hatched rect), detecting
+ * the blocked/reason fields by name heuristic (see module doc comment).
+ * Intervals whose boundary shares a calendar day with a neighbor are grouped
+ * so their tooltips show BOTH ranges together (see
+ * groupAdjacentSameDayIntervals) — every indicator in a group shares the
+ * same tooltip content.
+ *
+ * Tooltip format (per product spec):
+ *   Блокировка
+ *   с <date> по <date>            [one line per interval in the group]
+ *   продолжительность: <N> дней   [sum across the group's intervals]
+ *   Причина блокировки:
+ *   <reason 1>                    [distinct reasons across the group, in
+ *   <reason 2>                     chronological order]
+ *
+ * Returns [] if no blocked-like field was found at all, or if the field was
+ * found but produced zero completed/open intervals.
  */
 export function buildBlockingIndicators(
   issueId: string,
@@ -672,26 +714,62 @@ export function buildBlockingIndicators(
 
   const reasonChanges = reasonFieldName ? parseReasonChanges(activities, reasonFieldName) : [];
 
-  return intervals.map((interval, idx) => {
-    const subPeriods = buildReasonSubPeriods(interval, reasonChanges);
-    const tooltipRows = subPeriods.length > 0
-      ? subPeriods.map((sp) => ({
-          label: `с ${formatDateShort(sp.since)}`,
-          value: sp.reasonText || 'Причина не указана',
-        }))
-      : [{ label: `с ${formatDateShort(interval.start)}`, value: 'Причина не указана' }];
+  const groups = groupAdjacentSameDayIntervals(intervals);
+  const indicators: ChartIndicator[] = [];
 
-    return {
-      kind: 'hatch',
-      semanticType: 'blocking',
-      id: `${issueId}-blocking-${idx}-${interval.start}`,
-      rangeStart: interval.start,
-      rangeEnd: interval.end ?? stillBlockedEnd,
-      tooltipTitle: 'Период блокировки',
-      tooltipRows,
-      color: '#F44336',
-    };
-  });
+  for (const group of groups) {
+    // Date-range lines: one per interval in the group.
+    const rangeLines = group.map((interval) => ({
+      label: '',
+      value: `с ${formatDateShort(interval.start)} по ${formatDateShort(interval.end ?? stillBlockedEnd)}`,
+    }));
+
+    // Combined duration across the group's intervals, in whole days.
+    const totalDurationMs = group.reduce(
+      (sum, interval) => sum + ((interval.end ?? stillBlockedEnd) - interval.start),
+      0
+    );
+    const durationDays = Math.max(1, Math.round(totalDurationMs / DAY_MS));
+
+    // Distinct reasons across all of the group's intervals, chronological,
+    // deduplicated (a reason that persists across the group's boundary
+    // shouldn't be listed twice).
+    const seenReasons = new Set<string>();
+    const reasonLines: { label: string; value: string }[] = [];
+    for (const interval of group) {
+      for (const sp of buildReasonSubPeriods(interval, reasonChanges)) {
+        const text = sp.reasonText || 'Причина не указана';
+        if (seenReasons.has(text)) continue;
+        seenReasons.add(text);
+        reasonLines.push({ label: '', value: text });
+      }
+    }
+    if (reasonLines.length === 0) {
+      reasonLines.push({ label: '', value: 'Причина не указана' });
+    }
+
+    const tooltipRows: { label: string; value: string }[] = [
+      ...rangeLines,
+      { label: 'продолжительность', value: `${durationDays} дн.` },
+      { label: '', value: 'Причина блокировки:' },
+      ...reasonLines,
+    ];
+
+    for (const interval of group) {
+      indicators.push({
+        kind: 'hatch',
+        semanticType: 'blocking',
+        id: `${issueId}-blocking-${interval.start}`,
+        rangeStart: interval.start,
+        rangeEnd: interval.end ?? stillBlockedEnd,
+        tooltipTitle: 'Блокировка',
+        tooltipRows,
+        color: '#F44336',
+      });
+    }
+  }
+
+  return indicators;
 }
 
 // ─── Main aggregator ───────────────────────────────────────────────────────────
