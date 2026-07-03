@@ -7,6 +7,7 @@ import type {
   IssueActivityItem,
   ActivityPage,
   ChildIssueRef,
+  AssigneeRef,
 } from './types';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -32,9 +33,12 @@ const PROJECT_CUSTOM_FIELD_FIELDS =
 // Includes `fields(...)` so the current State value is available as a
 // fallback for issues that have never had a state-change activity (e.g.
 // still sitting in their initial default status) — see extractCurrentState.
+// `login` is included alongside the enum-style name/localizedName/
+// presentation projection so a User-typed value (e.g. Assignee) also comes
+// back with a usable display name — see extractCurrentAssignees.
 const ISSUE_FIELDS =
   'id,idReadable,summary,resolved,created,updated,' +
-  'fields(id,value(id,name,localizedName,presentation),' +
+  'fields(id,value(id,name,localizedName,presentation,login),' +
   'projectCustomField(id,field(id,name,localizedName,fieldType(id,valueType))))';
 
 // A single activitiesPage request returns ALL category items mixed together
@@ -42,15 +46,16 @@ const ISSUE_FIELDS =
 // projection must cover both custom-field-style activities AND link-style
 // activities at once — YouTrack simply leaves the non-applicable fields
 // empty for a given activity's actual type, it does not error. added/removed
-// need BOTH the custom-field projection (name,presentation,value) and the
-// link projection (idReadable,summary) since the same fields string is used
-// for every activity regardless of category.
+// need the custom-field projection (name,presentation,value,login — the
+// last for User-typed values like Assignee) AND the link projection
+// (idReadable,summary) since the same fields string is used for every
+// activity regardless of category.
 const ACTIVITY_ITEM_FIELDS =
   'id,timestamp,author(id,name,login),category(id),' +
   'field(id,name),' +
   'linkType(id,name,localizedName,sourceToTarget,targetToSource,directed),direction,' +
-  'added(id,name,presentation,value,idReadable,summary),' +
-  'removed(id,name,presentation,value,idReadable,summary)';
+  'added(id,name,presentation,value,login,idReadable,summary),' +
+  'removed(id,name,presentation,value,login,idReadable,summary)';
 
 // The activitiesPage endpoint returns ActivityCursorPage { activities, cursor, hasAfter }.
 // We must wrap the item fields in activities(...) and also request cursor and hasAfter.
@@ -262,6 +267,39 @@ export function extractCurrentEstimatedDate(issue: Issue): number | null {
   }
 
   return null;
+}
+
+// Field may be named "Assignee" (English) or "Исполнитель"/"Исполнители"
+// (Russian, singular or plural) per product spec — same regex used by
+// filterAssigneeActivities() in activity-parser.ts, so the "current"
+// snapshot and the historical change events agree on which field counts.
+const ASSIGNEE_FIELD_NAME_RE = /assignee|исполнител/i;
+
+/**
+ * Reads an issue's CURRENT Assignee(s) directly off the issue's `fields`
+ * array (already fetched via ISSUE_FIELDS) — unlike the child-issues
+ * indicator, no separate API call is needed here: the assignee value is
+ * already part of the standard custom-field fetch every issue goes through.
+ *
+ * The field may be single- or multi-value (some projects allow more than
+ * one assignee) — `value` is normalized to an array either way. Display
+ * name falls back name -> login -> id, mirroring the id-based fallback
+ * pattern used elsewhere (e.g. ChildIssueRef.summary ?? idReadable).
+ */
+export function extractCurrentAssignees(issue: Issue): AssigneeRef[] {
+  const field = issue.fields.find((f) =>
+    ASSIGNEE_FIELD_NAME_RE.test(f.projectCustomField?.field?.name ?? '')
+  );
+  if (!field) return [];
+
+  const val = field.value;
+  const arr = Array.isArray(val) ? val : val ? [val] : [];
+  return arr
+    .filter((v): v is NonNullable<typeof v> => v != null)
+    .map((v) => ({
+      id: v.id ?? '',
+      displayName: v.name ?? v.login ?? v.id ?? 'Unknown',
+    }));
 }
 
 export async function loadIssues(

@@ -10,8 +10,10 @@ import {
   LinkedIssueRef,
   ChildIssueRef,
   ChildLinkChangeEvent,
+  AssigneeRef,
+  AssigneeChangeEvent,
 } from './types';
-import { extractCurrentState, extractCurrentEstimatedDate } from './resources';
+import { extractCurrentState, extractCurrentEstimatedDate, extractCurrentAssignees } from './resources';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -1084,6 +1086,194 @@ export function buildChildLinkChangeIndicators(
   });
 }
 
+// ─── Assignee change indicators (assignee history) ──────────────────────────
+//
+// By analogy with the child-issues indicator above: an upward-pointing
+// triangle event, green when an assignee was added, blue when one was
+// removed, pinned to the bottom of the status bar. Field may be named
+// "Assignee" (English) or "Исполнитель"/"Исполнители" (Russian, singular or
+// plural) per product spec — matched via field name only (no $type-based
+// fallback needed, mirroring the Estimated Date field-name-only detection
+// style rather than the state field's dual $type+name strategy, since this
+// is a single user-named field, not a fundamental cross-project concept).
+// Unlike the child-issues indicator, no extra API call is needed for the
+// "current" snapshot — see extractCurrentAssignees in resources.ts, which
+// reads it straight off the already-fetched issue.fields.
+
+const ASSIGNEE_FIELD_NAME_RE = /assignee|исполнител/i;
+
+function toAssigneeRef(val: ActivityValue): AssigneeRef {
+  return {
+    id: val.id ?? '',
+    displayName: val.name ?? val.login ?? val.id ?? 'Unknown',
+  };
+}
+
+function filterAssigneeActivities(activities: IssueActivityItem[]): IssueActivityItem[] {
+  return activities
+    .filter((a) => ASSIGNEE_FIELD_NAME_RE.test(a.field?.name ?? ''))
+    .sort((a, b) => a.timestamp - b.timestamp);
+}
+
+/**
+ * Merges a day's worth of assignee-change activities into
+ * AssigneeChangeEvent(s) — same per-day MERGE + net===0-split model as
+ * parseChildLinkChanges (see that function's doc comment for the full
+ * rationale): losing intermediate added/removed entries would make the
+ * tooltip's per-day change list wrong, and an exact same-day add+remove
+ * compensation splits into two honest events (one green, one blue) rather
+ * than inventing one ambiguous-colored event.
+ */
+export function parseAssigneeChanges(activities: IssueActivityItem[]): AssigneeChangeEvent[] {
+  const changes = filterAssigneeActivities(activities);
+  if (changes.length === 0) return [];
+
+  const byDay = new Map<string, IssueActivityItem[]>();
+  for (const activity of changes) {
+    const day = toDateString(activity.timestamp);
+    const existing = byDay.get(day);
+    if (existing) {
+      existing.push(activity);
+    } else {
+      byDay.set(day, [activity]);
+    }
+  }
+
+  const result: AssigneeChangeEvent[] = [];
+
+  for (const dayActivities of byDay.values()) {
+    const changedAt = dayActivities[dayActivities.length - 1].timestamp;
+
+    const addedById = new Map<string, AssigneeRef>();
+    const removedById = new Map<string, AssigneeRef>();
+    for (const activity of dayActivities) {
+      for (const v of toActivityValueArray(activity.added)) {
+        if (typeof v !== 'object' || v === null) continue;
+        addedById.set(v.id ?? '', toAssigneeRef(v));
+      }
+      for (const v of toActivityValueArray(activity.removed)) {
+        if (typeof v !== 'object' || v === null) continue;
+        removedById.set(v.id ?? '', toAssigneeRef(v));
+      }
+    }
+
+    const addedAssignees = Array.from(addedById.values());
+    const removedAssignees = Array.from(removedById.values());
+    const net = addedAssignees.length - removedAssignees.length;
+
+    if (net === 0 && addedAssignees.length > 0 && removedAssignees.length > 0) {
+      result.push({
+        changedAt,
+        addedAssignees,
+        removedAssignees: [],
+        net: addedAssignees.length,
+        assigneesAsOfEvent: [],
+      });
+      result.push({
+        changedAt,
+        addedAssignees: [],
+        removedAssignees,
+        net: -removedAssignees.length,
+        assigneesAsOfEvent: [],
+      });
+    } else {
+      result.push({ changedAt, addedAssignees, removedAssignees, net, assigneesAsOfEvent: [] });
+    }
+  }
+
+  result.sort((a, b) => a.changedAt - b.changedAt);
+  return result;
+}
+
+/**
+ * Fills in `assigneesAsOfEvent` for each change via a BACKWARD pass from the
+ * known-correct "now" snapshot (currentAssignees, from
+ * extractCurrentAssignees) — mirrors buildChildrenTimeline exactly, see that
+ * function's doc comment for why a backward pass (not forward-from-zero) is
+ * used.
+ */
+export function buildAssigneesTimeline(
+  changes: AssigneeChangeEvent[],
+  currentAssignees: AssigneeRef[]
+): AssigneeChangeEvent[] {
+  const working = new Map<string, AssigneeRef>();
+  for (const assignee of currentAssignees) {
+    working.set(assignee.id, assignee);
+  }
+
+  const result: AssigneeChangeEvent[] = new Array(changes.length);
+
+  for (let i = changes.length - 1; i >= 0; i--) {
+    const change = changes[i];
+
+    result[i] = {
+      ...change,
+      assigneesAsOfEvent: Array.from(working.values()),
+    };
+
+    for (const added of change.addedAssignees) {
+      working.delete(added.id);
+    }
+    for (const removed of change.removedAssignees) {
+      working.set(removed.id, removed);
+    }
+  }
+
+  return result;
+}
+
+function assigneeTooltipTitle(isAddition: boolean, names: string[]): string {
+  const joined = names.join(', ');
+  if (names.length > 1) {
+    return isAddition ? `Добавлены исполнители: ${joined}` : `Сняты исполнители: ${joined}`;
+  }
+  return isAddition ? `Добавлен исполнитель ${joined}` : `Снят исполнитель ${joined}`;
+}
+
+/**
+ * Builds 'triangle' ChartIndicators for an issue's assignee-composition
+ * change events (see parseAssigneeChanges/buildAssigneesTimeline above).
+ * Each event becomes one green (net > 0, added) or blue (net < 0, removed)
+ * upward-pointing triangle. `label` carries the assignee count as of that
+ * event — gantt-chart.tsx renders it inline to the right of the glyph, which
+ * doubles as the always-visible "current count" the product spec asks for,
+ * without the hover-only tradeoff the child-issues indicator had to settle
+ * for (see docs/child-issues-indicator-spec.md §9.3).
+ */
+export function buildAssigneeChangeIndicators(
+  issueId: string,
+  changes: AssigneeChangeEvent[]
+): ChartIndicator[] {
+  return changes.map((change, idx) => {
+    const isAddition = change.net > 0;
+    const names = (isAddition ? change.addedAssignees : change.removedAssignees).map((a) => a.displayName);
+
+    const tooltipRows: { label: string; value: string }[] = [
+      { label: 'Всего исполнителей', value: String(change.assigneesAsOfEvent.length) },
+      { label: '', value: 'Исполнители:' },
+    ];
+    if (change.assigneesAsOfEvent.length === 0) {
+      tooltipRows.push({ label: '', value: 'Нет исполнителей' });
+    } else {
+      const sorted = [...change.assigneesAsOfEvent].sort((a, b) => a.displayName.localeCompare(b.displayName));
+      for (const assignee of sorted) {
+        tooltipRows.push({ label: '', value: assignee.displayName });
+      }
+    }
+
+    return {
+      kind: 'triangle',
+      semanticType: 'assignee-change',
+      id: `${issueId}-assignee-${idx}-${change.changedAt}-${isAddition ? 'add' : 'remove'}`,
+      date: change.changedAt,
+      tooltipTitle: assigneeTooltipTitle(isAddition, names),
+      tooltipRows,
+      label: String(change.assigneesAsOfEvent.length),
+      color: isAddition ? '#4CAF50' : '#2196F3',
+    };
+  });
+}
+
 // ─── Main aggregator ───────────────────────────────────────────────────────────
 
 /**
@@ -1151,6 +1341,10 @@ export function buildIssueStateHistoryData(
     );
     const childLinkIndicators = buildChildLinkChangeIndicators(issue.id, childLinkChanges, currentChildren);
 
+    const currentAssignees = extractCurrentAssignees(issue);
+    const assigneeChanges = buildAssigneesTimeline(parseAssigneeChanges(activities), currentAssignees);
+    const assigneeIndicators = buildAssigneeChangeIndicators(issue.id, assigneeChanges);
+
     const overallStart = segments[0].startDate;
     const currentEstimateDate = extractCurrentEstimatedDate(issue);
     const currentEstimateFlag = buildCurrentEstimateFlagIndicator(
@@ -1175,6 +1369,7 @@ export function buildIssueStateHistoryData(
         ...(currentEstimateFlag ? [currentEstimateFlag] : []),
         ...blockingIndicators,
         ...childLinkIndicators,
+        ...assigneeIndicators,
       ],
     });
   }
@@ -1266,5 +1461,34 @@ export function getDebugChildLinkInfo(
     filteredActivities,
     changes,
     currentChildren,
+  };
+}
+
+/**
+ * Exposes the raw assignee-field activities + derived assignee-change
+ * events for one issue, for the widget's debug-mode UI. This is the
+ * troubleshooting hook for the Assignee/Исполнитель field-name heuristic in
+ * filterAssigneeActivities() — since the exact field name/value shape
+ * hasn't been confirmed against every real project's custom field setup,
+ * this lets a user with debugMode on see exactly which activities matched
+ * and what events/snapshot were derived from them, so a mismatch can be
+ * quickly diagnosed the same way the child-issues indicator's LinksCategory
+ * shape mismatch was (see getDebugChildLinkInfo above).
+ */
+export function getDebugAssigneeInfo(
+  activities: IssueActivityItem[],
+  currentAssignees: AssigneeRef[]
+): {
+  filteredActivities: IssueActivityItem[];
+  changes: AssigneeChangeEvent[];
+  currentAssignees: AssigneeRef[];
+} {
+  const filteredActivities = filterAssigneeActivities(activities);
+  const changes = buildAssigneesTimeline(parseAssigneeChanges(activities), currentAssignees);
+
+  return {
+    filteredActivities,
+    changes,
+    currentAssignees,
   };
 }

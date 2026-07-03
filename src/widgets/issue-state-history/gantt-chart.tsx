@@ -77,14 +77,24 @@ const INDICATOR_DEFAULT_COLOR: Record<ChartIndicator['kind'], string> = {
   // Producers always pass an explicit color for 'dot' (green add / yellow
   // remove is the whole point of the indicator) — this is just a fallback.
   dot: '#4CAF50',
+  // Producers always pass an explicit color for 'triangle' too (green add /
+  // blue remove) — this is just a fallback.
+  triangle: '#4CAF50',
 };
 
 // Radius (px) of a 'dot' indicator's visible circle.
 const DOT_RADIUS = 3.5;
-// Horizontal offset (px) applied to two same-day dot indicators (the
-// net===0 compensation edge case — see parseChildLinkChanges) so they don't
-// fully overlap.
+// Horizontal offset (px) applied to two same-day dot/triangle indicators
+// (the net===0 compensation edge case — see parseChildLinkChanges /
+// parseAssigneeChanges) so they don't fully overlap.
 const DOT_COLLISION_OFFSET = 3;
+
+// Base width / height (px) of a 'triangle' indicator's visible glyph. Its
+// base is pinned to the bottom edge of the status bar, apex pointing up.
+const TRIANGLE_BASE_WIDTH = 8;
+const TRIANGLE_HEIGHT = 7;
+// Gap (px) between a triangle's right edge and its inline count label.
+const TRIANGLE_LABEL_GAP = 4;
 
 // SVG <pattern> id for the diagonal hatch fill, defined once in <defs> and
 // referenced by every 'hatch' indicator via fill="url(#...)".
@@ -106,6 +116,34 @@ const FLAG_LABEL_PX_PER_CHAR = 6;
 // comes next (next indicator or the row/chart edge), so labels don't butt
 // up against neighboring content even when they technically "fit".
 const FLAG_LABEL_MIN_GAP = 4;
+
+// Computes a small horizontal nudge for same-day indicators of one `kind`
+// sharing the same calendar day (e.g. the net===0 add+remove compensation
+// edge case in parseChildLinkChanges/parseAssigneeChanges, which emits two
+// same-day glyphs) — spreads them symmetrically around their shared x so
+// they don't fully overlap. Returns a Map<indicator.id, offsetPx>.
+function computeSameDayOffsets(
+  indicators: ChartIndicator[],
+  kind: ChartIndicator['kind']
+): Map<string, number> {
+  const offsetById = new Map<string, number>();
+  const byDay = new Map<string, ChartIndicator[]>();
+  indicators
+    .filter((ind) => ind.kind === kind && ind.date !== undefined)
+    .forEach((ind) => {
+      const day = new Date(ind.date as number).toISOString().slice(0, 10);
+      const list = byDay.get(day);
+      if (list) list.push(ind); else byDay.set(day, [ind]);
+    });
+  byDay.forEach((group) => {
+    if (group.length < 2) return;
+    group.forEach((ind, i) => {
+      const offset = (i - (group.length - 1) / 2) * DOT_COLLISION_OFFSET * 2;
+      offsetById.set(ind.id, offset);
+    });
+  });
+  return offsetById;
+}
 
 // ─── XSS-safe tooltip builder ─────────────────────────────────────────────────
 function escHtml(s: string): string {
@@ -471,27 +509,13 @@ export default function GanttChart({ data, statusOrder, baseUrl, gridStep, visib
         .filter((ind) => ind.kind !== 'hatch' && ind.date !== undefined)
         .sort((a, b) => (a.date ?? 0) - (b.date ?? 0));
 
-      // Collision offset for 'dot' indicators sharing the same calendar day
-      // (the net===0 add+remove compensation edge case in
-      // parseChildLinkChanges emits exactly two same-day dots) — the first
-      // dot on a given day is nudged left, the second nudged right, so they
-      // don't fully overlap on top of each other.
-      const dotOffsetById = new Map<string, number>();
-      const dotsByDay = new Map<string, ChartIndicator[]>();
-      indicators
-        .filter((ind) => ind.kind === 'dot' && ind.date !== undefined)
-        .forEach((ind) => {
-          const day = new Date(ind.date as number).toISOString().slice(0, 10);
-          const list = dotsByDay.get(day);
-          if (list) list.push(ind); else dotsByDay.set(day, [ind]);
-        });
-      dotsByDay.forEach((dots) => {
-        if (dots.length < 2) return;
-        dots.forEach((ind, i) => {
-          const offset = (i - (dots.length - 1) / 2) * DOT_COLLISION_OFFSET * 2;
-          dotOffsetById.set(ind.id, offset);
-        });
-      });
+      // Collision offset for 'dot'/'triangle' indicators sharing the same
+      // calendar day (the net===0 add+remove compensation edge case in
+      // parseChildLinkChanges/parseAssigneeChanges emits exactly two
+      // same-day glyphs) — the first on a given day is nudged left, the
+      // second nudged right, so they don't fully overlap on top of each other.
+      const dotOffsetById = computeSameDayOffsets(indicators, 'dot');
+      const triangleOffsetById = computeSameDayOffsets(indicators, 'triangle');
 
       indicators.forEach((indicator) => {
         const color = indicator.color ?? INDICATOR_DEFAULT_COLOR[indicator.kind];
@@ -630,6 +654,63 @@ export default function GanttChart({ data, statusOrder, baseUrl, gridStep, visib
             .attr('stroke', 'var(--ring-content-background-color)')
             .attr('stroke-width', 1)
             .attr('pointer-events', 'none');
+          return;
+        }
+
+        if (indicator.kind === 'triangle') {
+          const triX = x + (triangleOffsetById.get(indicator.id) ?? 0);
+          const halfBase = TRIANGLE_BASE_WIDTH / 2;
+          // Base pinned to the bottom edge of the status bar, apex pointing up.
+          const baseY = ROW_PADDING + BAR_HEIGHT;
+          const apexY = baseY - TRIANGLE_HEIGHT;
+
+          const triGroup = rowG.append('g')
+            .attr('class', 'ish-indicator ish-indicator--triangle');
+
+          const labelText = indicator.label ?? '';
+          const labelStartX = triX + halfBase + TRIANGLE_LABEL_GAP;
+          // Same rough px-per-character estimate used for the flag's inline
+          // label — good enough for a short integer count, no need for
+          // canvas measureText.
+          const labelPx = labelText.length * FLAG_LABEL_PX_PER_CHAR;
+          const hitLeft = triX - INDICATOR_HIT_WIDTH / 2;
+          const hitRight = labelText
+            ? labelStartX + labelPx + FLAG_LABEL_MIN_GAP
+            : triX + INDICATOR_HIT_WIDTH / 2;
+
+          // Invisible hit-area covering the triangle glyph + its label, same
+          // pattern as the flag's widened hit rect above.
+          triGroup.append('rect')
+            .attr('class', 'ish-indicator__hit')
+            .attr('x', hitLeft)
+            .attr('y', 0)
+            .attr('width', hitRight - hitLeft)
+            .attr('height', ROW_HEIGHT)
+            .attr('fill', 'transparent')
+            .on('mouseover', function (event: MouseEvent) {
+              showIndicatorTooltip(event, indicator);
+            })
+            .on('mousemove', function (event: MouseEvent) {
+              moveTooltip(event);
+            })
+            .on('mouseout', function () {
+              hideTooltip();
+            });
+
+          triGroup.append('path')
+            .attr('d', `M${triX - halfBase},${baseY} L${triX + halfBase},${baseY} L${triX},${apexY} Z`)
+            .attr('fill', color)
+            .attr('pointer-events', 'none');
+
+          if (labelText) {
+            triGroup.append('text')
+              .attr('class', 'ish-indicator__label')
+              .attr('x', labelStartX)
+              .attr('y', (baseY + apexY) / 2)
+              .attr('dominant-baseline', 'middle')
+              .attr('pointer-events', 'none')
+              .text(labelText);
+          }
           return;
         }
 
