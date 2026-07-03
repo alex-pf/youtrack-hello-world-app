@@ -74,7 +74,17 @@ const INDICATOR_DEFAULT_COLOR: Record<ChartIndicator['kind'], string> = {
   marker: '#607D8B',
   flag: '#FF5722',
   hatch: '#F44336',
+  // Producers always pass an explicit color for 'dot' (green add / yellow
+  // remove is the whole point of the indicator) — this is just a fallback.
+  dot: '#4CAF50',
 };
+
+// Radius (px) of a 'dot' indicator's visible circle.
+const DOT_RADIUS = 3.5;
+// Horizontal offset (px) applied to two same-day dot indicators (the
+// net===0 compensation edge case — see parseChildLinkChanges) so they don't
+// fully overlap.
+const DOT_COLLISION_OFFSET = 3;
 
 // SVG <pattern> id for the diagonal hatch fill, defined once in <defs> and
 // referenced by every 'hatch' indicator via fill="url(#...)".
@@ -461,6 +471,28 @@ export default function GanttChart({ data, statusOrder, baseUrl, gridStep, visib
         .filter((ind) => ind.kind !== 'hatch' && ind.date !== undefined)
         .sort((a, b) => (a.date ?? 0) - (b.date ?? 0));
 
+      // Collision offset for 'dot' indicators sharing the same calendar day
+      // (the net===0 add+remove compensation edge case in
+      // parseChildLinkChanges emits exactly two same-day dots) — the first
+      // dot on a given day is nudged left, the second nudged right, so they
+      // don't fully overlap on top of each other.
+      const dotOffsetById = new Map<string, number>();
+      const dotsByDay = new Map<string, ChartIndicator[]>();
+      indicators
+        .filter((ind) => ind.kind === 'dot' && ind.date !== undefined)
+        .forEach((ind) => {
+          const day = new Date(ind.date as number).toISOString().slice(0, 10);
+          const list = dotsByDay.get(day);
+          if (list) list.push(ind); else dotsByDay.set(day, [ind]);
+        });
+      dotsByDay.forEach((dots) => {
+        if (dots.length < 2) return;
+        dots.forEach((ind, i) => {
+          const offset = (i - (dots.length - 1) / 2) * DOT_COLLISION_OFFSET * 2;
+          dotOffsetById.set(ind.id, offset);
+        });
+      });
+
       indicators.forEach((indicator) => {
         const color = indicator.color ?? INDICATOR_DEFAULT_COLOR[indicator.kind];
 
@@ -560,6 +592,43 @@ export default function GanttChart({ data, statusOrder, baseUrl, gridStep, visib
             .attr('y2', ROW_PADDING + BAR_HEIGHT)
             .attr('stroke', color)
             .attr('stroke-width', 2)
+            .attr('pointer-events', 'none');
+          return;
+        }
+
+        if (indicator.kind === 'dot') {
+          const dotX = x + (dotOffsetById.get(indicator.id) ?? 0);
+
+          const dotGroup = rowG.append('g')
+            .attr('class', 'ish-indicator ish-indicator--dot');
+
+          // Invisible wider hit-area — the visible circle is only 7px in
+          // diameter, too small to reliably hover. Same pattern as
+          // marker/flag/hatch above.
+          dotGroup.append('rect')
+            .attr('class', 'ish-indicator__hit')
+            .attr('x', dotX - INDICATOR_HIT_WIDTH / 2)
+            .attr('y', 0)
+            .attr('width', INDICATOR_HIT_WIDTH)
+            .attr('height', ROW_HEIGHT)
+            .attr('fill', 'transparent')
+            .on('mouseover', function (event: MouseEvent) {
+              showIndicatorTooltip(event, indicator);
+            })
+            .on('mousemove', function (event: MouseEvent) {
+              moveTooltip(event);
+            })
+            .on('mouseout', function () {
+              hideTooltip();
+            });
+
+          dotGroup.append('circle')
+            .attr('cx', dotX)
+            .attr('cy', cy)
+            .attr('r', DOT_RADIUS)
+            .attr('fill', color)
+            .attr('stroke', 'var(--ring-content-background-color)')
+            .attr('stroke-width', 1)
             .attr('pointer-events', 'none');
           return;
         }

@@ -149,6 +149,14 @@
   opacity: 1;
 }
 
+.ish-gantt-svg .ish-indicator--dot {
+  opacity: 0.95;
+}
+
+.ish-gantt-svg .ish-indicator--dot:hover {
+  opacity: 1;
+}
+
 .ish-gantt-svg .ish-indicator__label {
   font-size: 10px;
   fill: var(--ring-text-color);

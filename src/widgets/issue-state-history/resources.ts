@@ -6,13 +6,18 @@ import type {
   Issue,
   IssueActivityItem,
   ActivityPage,
+  ChildIssueRef,
 } from './types';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const MAX_PROJECTS = 200;
 const ISSUES_PACK_SIZE = 50;
-const ACTIVITY_CATEGORIES = 'CustomFieldCategory,IssueResolvedCategory';
+// LinksCategory added for the child issues indicator (Родитель для / Subtask
+// link activities) — see activity-parser.ts filterChildLinkActivities().
+// UNTESTED against real project data: the exact category name/shape for link
+// activities hasn't been confirmed against a live YouTrack instance.
+const ACTIVITY_CATEGORIES = 'CustomFieldCategory,IssueResolvedCategory,LinksCategory';
 const ACTIVITIES_PAGE_SIZE = 1000;
 // Delay between batched activity requests to avoid rate-limiting (ms)
 const ACTIVITY_BATCH_DELAY_MS = 100;
@@ -33,15 +38,33 @@ const ISSUE_FIELDS =
   'fields(id,value(id,name,localizedName,presentation),' +
   'projectCustomField(id,field(id,name,localizedName,fieldType(id,valueType))))';
 
+// A single activitiesPage request returns ALL category items mixed together
+// (CustomFieldCategory, IssueResolvedCategory, LinksCategory), so the fields
+// projection must cover both custom-field-style activities AND link-style
+// activities at once — YouTrack simply leaves the non-applicable fields
+// empty for a given activity's actual type, it does not error. added/removed
+// need BOTH the custom-field projection (name,presentation,value) and the
+// link projection (idReadable,summary) since the same fields string is used
+// for every activity regardless of category.
 const ACTIVITY_ITEM_FIELDS =
   'id,timestamp,author(id,name,login),category(id),' +
   'field(id,name),' +
-  'added(id,name,presentation,value),' +
-  'removed(id,name,presentation,value)';
+  'linkType(id,name,localizedName,sourceToTarget,targetToSource,directed),direction,' +
+  'added(id,name,presentation,value,idReadable,summary),' +
+  'removed(id,name,presentation,value,idReadable,summary)';
 
 // The activitiesPage endpoint returns ActivityCursorPage { activities, cursor, hasAfter }.
 // We must wrap the item fields in activities(...) and also request cursor and hasAfter.
 const ACTIVITY_FIELDS = `activities(${ACTIVITY_ITEM_FIELDS}),cursor,hasAfter`;
+
+// Fields projection for GET issues/{id}/links — used to read the CURRENT
+// (as-of-now) set of child issues via loadCurrentChildIssues(). Filtered
+// client-side to the "Subtask"/"Родитель для" outward direction, same family
+// match as filterChildLinkActivities() in activity-parser.ts.
+const ISSUE_LINKS_FIELDS =
+  'id,direction,' +
+  'linkType(id,name,localizedName,sourceToTarget,targetToSource,directed),' +
+  'issues(id,idReadable,summary)';
 
 // ─── Query Assist ────────────────────────────────────────────────────────────
 
@@ -334,6 +357,111 @@ export async function loadActivitiesBatch(
   return result;
 }
 
+// ─── Current Child Issues ────────────────────────────────────────────────────
+
+// Same family-match regex as filterChildLinkActivities() in
+// activity-parser.ts — kept in sync deliberately so "current children" (this
+// file) and "child link change events" (activity-parser.ts) agree on what
+// counts as a "Родитель для"/"Subtask" outward link.
+const SUBTASK_LINK_TYPE_RE = /subtask|подзадач/i;
+const PARENT_FOR_RE = /родитель для|parent for/i;
+
+interface IssueLinkEntry {
+  id: string;
+  direction?: 'OUTWARD' | 'INWARD' | 'BOTH' | string;
+  linkType?: {
+    name?: string;
+    localizedName?: string;
+    sourceToTarget?: string;
+    targetToSource?: string;
+  };
+  issues?: { id: string; idReadable: string; summary: string }[];
+}
+
+/**
+ * Reads the CURRENT (as-of-now) list of child issues for one issue, via
+ * issues/{id}/links — a new API surface, not used anywhere else in this
+ * project. Only links whose type matches the "Subtask"/"Родитель для" family
+ * AND whose direction is outward (this issue is the parent) are counted —
+ * same direction rule as filterChildLinkActivities() in activity-parser.ts,
+ * so the "current" snapshot and the historical change events agree on what
+ * counts as a child.
+ *
+ * UNTESTED against real project data (see risk notes in activity-parser.ts
+ * above filterChildLinkActivities) — direction detection falls back to
+ * matching linkType.sourceToTarget against "Родитель для"/"Parent for" when
+ * the `direction` field itself isn't present in the API response.
+ */
+export async function loadCurrentChildIssues(
+  host: EmbeddableWidgetAPI,
+  issueId: string
+): Promise<ChildIssueRef[]> {
+  const links = await host.fetchYouTrack<IssueLinkEntry[]>(`issues/${issueId}/links`, {
+    query: { fields: ISSUE_LINKS_FIELDS },
+  });
+
+  const children: ChildIssueRef[] = [];
+  for (const link of links ?? []) {
+    const typeName = link.linkType?.name ?? '';
+    const typeLocalized = link.linkType?.localizedName ?? '';
+    const isSubtaskFamily = SUBTASK_LINK_TYPE_RE.test(typeName) || SUBTASK_LINK_TYPE_RE.test(typeLocalized);
+    if (!isSubtaskFamily) continue;
+
+    const isOutward = link.direction
+      ? link.direction === 'OUTWARD'
+      : PARENT_FOR_RE.test(link.linkType?.sourceToTarget ?? '');
+    if (!isOutward) continue;
+
+    for (const issue of link.issues ?? []) {
+      children.push({
+        id: issue.id,
+        idReadable: issue.idReadable,
+        summary: issue.summary ?? issue.idReadable,
+      });
+    }
+  }
+  return children;
+}
+
+/**
+ * Batch version of loadCurrentChildIssues(), following the exact same
+ * sequential + delay pattern as loadActivitiesBatch() above (to stay under
+ * the same rate-limiting budget).
+ *
+ * @param host - EmbeddableWidgetAPI instance
+ * @param issueIds - Array of internal issue IDs
+ * @param onProgress - Optional callback called after each issue is loaded (loaded, total)
+ * @returns Map of issueId → current child issues array
+ */
+export async function loadCurrentChildIssuesBatch(
+  host: EmbeddableWidgetAPI,
+  issueIds: string[],
+  onProgress?: (loaded: number, total: number) => void
+): Promise<Map<string, ChildIssueRef[]>> {
+  const result = new Map<string, ChildIssueRef[]>();
+
+  for (let i = 0; i < issueIds.length; i++) {
+    const issueId = issueIds[i];
+    try {
+      const children = await loadCurrentChildIssues(host, issueId);
+      result.set(issueId, children);
+    } catch (e) {
+      // On error for a single issue, store empty array and continue
+      console.warn(`Failed to load current child issues for issue ${issueId}:`, e);
+      result.set(issueId, []);
+    }
+
+    onProgress?.(i + 1, issueIds.length);
+
+    // Throttle: wait between requests (skip delay after last item)
+    if (i < issueIds.length - 1) {
+      await new Promise<void>((resolve) => setTimeout(resolve, ACTIVITY_BATCH_DELAY_MS));
+    }
+  }
+
+  return result;
+}
+
 // ─── Orchestrated Data Loading ────────────────────────────────────────────────
 
 /**
@@ -345,13 +473,17 @@ export async function loadActivitiesBatch(
  * @param host - EmbeddableWidgetAPI instance
  * @param search - YouTrack search query string
  * @param onProgress - Optional progress callback (phase, loaded, total)
- * @returns Object with issues array and activitiesMap
+ * @returns Object with issues array, activitiesMap, and currentChildrenMap
  */
 export async function loadIssuesWithActivities(
   host: EmbeddableWidgetAPI,
   search: string,
-  onProgress?: (phase: 'issues' | 'activities', loaded: number, total: number) => void
-): Promise<{ issues: Issue[]; activitiesMap: Map<string, IssueActivityItem[]> }> {
+  onProgress?: (phase: 'issues' | 'activities' | 'children', loaded: number, total: number) => void
+): Promise<{
+  issues: Issue[];
+  activitiesMap: Map<string, IssueActivityItem[]>;
+  currentChildrenMap: Map<string, ChildIssueRef[]>;
+}> {
   // Phase 1: Load all issues (paginated)
   const allIssues: Issue[] = [];
   let skip = 0;
@@ -366,7 +498,7 @@ export async function loadIssuesWithActivities(
   }
 
   if (allIssues.length === 0) {
-    return { issues: [], activitiesMap: new Map() };
+    return { issues: [], activitiesMap: new Map(), currentChildrenMap: new Map() };
   }
 
   // Phase 2: Load activities for all issues in batches
@@ -375,5 +507,14 @@ export async function loadIssuesWithActivities(
     onProgress?.('activities', loaded, total);
   });
 
-  return { issues: allIssues, activitiesMap };
+  // Phase 3: Load each issue's CURRENT child issues (API add-on, not derived
+  // from activities) — the reliable "now" snapshot buildChildrenTimeline()
+  // backward-fills from. Kept inside this orchestrator (rather than a
+  // separate call site in app.tsx) so there's a single place that owns the
+  // "issues -> activities -> children" loading sequence.
+  const currentChildrenMap = await loadCurrentChildIssuesBatch(host, issueIds, (loaded, total) => {
+    onProgress?.('children', loaded, total);
+  });
+
+  return { issues: allIssues, activitiesMap, currentChildrenMap };
 }
