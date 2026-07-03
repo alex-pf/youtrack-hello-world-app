@@ -6,6 +6,10 @@ import {
   DateSegment,
   IssueStateHistoryData,
   ChartIndicator,
+  IssueLinkActivityItem,
+  LinkedIssueRef,
+  ChildIssueRef,
+  ChildLinkChangeEvent,
 } from './types';
 import { extractCurrentState, extractCurrentEstimatedDate } from './resources';
 
@@ -787,6 +791,287 @@ export function buildBlockingIndicators(
   return indicators;
 }
 
+// ─── Child issue link-change indicators ─────────────────────────────────────
+//
+// Only the "Родитель для" / "Parent for" (link type family "Subtask",
+// outward direction — this issue is the parent) direction is considered.
+// The reverse direction ("Подзадача для" / "Subtask of", this issue IS a
+// child) is ignored completely, as is every other link type (Relates,
+// Duplicates, Depends on, Cloned, ...).
+//
+// UNTESTED against real project data (same situation as the Blocked-field
+// heuristic above): the exact category name, presence of `direction`, and
+// presence of idReadable/summary inside added/removed for LinksCategory
+// activities have not been confirmed against a live YouTrack instance. See
+// getDebugChildLinkInfo() below for the diagnostic hook.
+
+const CHILD_LINK_TYPE_NAME_RE = /subtask|подзадач/i;
+const CHILD_LINK_PARENT_FOR_RE = /родитель для|parent for/i;
+const CHILD_LINK_SUBTASK_OF_RE = /подзадача для|subtask of/i;
+
+function toLinkedIssueRefArray(
+  val: LinkedIssueRef[] | LinkedIssueRef | null
+): LinkedIssueRef[] {
+  if (!val) return [];
+  if (Array.isArray(val)) return val;
+  return [val];
+}
+
+function toChildIssueRef(ref: LinkedIssueRef): ChildIssueRef {
+  return {
+    id: ref.id,
+    idReadable: ref.idReadable,
+    // Fallback to idReadable when the activity payload doesn't include a
+    // summary (see risk notes in types.ts/docs) — better to show the issue
+    // number than nothing at all.
+    summary: ref.summary ?? ref.idReadable,
+  };
+}
+
+/**
+ * Filters an issue's LinksCategory activities down to ones representing a
+ * "Родитель для"/"Subtask" (outward) change — i.e. this issue gained/lost a
+ * CHILD. Direction is determined primarily from the `direction` field when
+ * present; when absent (not all API versions return it), we fall back to
+ * `field.name` — the DIRECTIONAL wording YouTrack attaches to the specific
+ * activity (e.g. "Родитель для" when this issue fired the activity as the
+ * parent side, "Подзадача для" when it fired as the child side of the very
+ * same link type). `linkType.sourceToTarget`/`targetToSource` are NOT usable
+ * for this: they're static properties of the link type itself (always
+ * "Родитель для" / "Подзадача для" respectively, regardless of which side a
+ * given activity happened on), so they can't distinguish direction per
+ * activity — only `field.name` (or `direction`) can.
+ */
+export function filterChildLinkActivities(
+  activities: IssueLinkActivityItem[]
+): IssueLinkActivityItem[] {
+  return activities
+    .filter((a) => {
+      if (a.category?.id !== 'LinksCategory') return false;
+
+      const typeName = a.linkType?.name ?? '';
+      const typeLocalized = a.linkType?.localizedName ?? '';
+      const sourceToTarget = a.linkType?.sourceToTarget ?? '';
+      const isSubtaskFamily =
+        CHILD_LINK_TYPE_NAME_RE.test(typeName) ||
+        CHILD_LINK_TYPE_NAME_RE.test(typeLocalized) ||
+        CHILD_LINK_PARENT_FOR_RE.test(sourceToTarget);
+      if (!isSubtaskFamily) return false;
+
+      if (a.direction) {
+        return a.direction === 'OUTWARD';
+      }
+
+      // No `direction` field — fall back to the per-activity directional
+      // field name. Reject outright if it matches the REVERSE ("Подзадача
+      // для"/"Subtask of") side, since that means this issue is the CHILD,
+      // not the parent, for THIS activity.
+      const fieldName = a.field?.name ?? '';
+      if (CHILD_LINK_SUBTASK_OF_RE.test(fieldName)) return false;
+      return CHILD_LINK_PARENT_FOR_RE.test(fieldName);
+    })
+    .sort((a, b) => a.timestamp - b.timestamp);
+}
+
+/**
+ * Merges a day's worth of child-link activities into ChildLinkChangeEvent(s)
+ * — per-day MERGE (union of all added/removed that day), not "keep only the
+ * last change" like parseEstimateDateChanges(), because losing intermediate
+ * added/removed entries would make the tooltip's per-day change list wrong.
+ *
+ * Same child added AND removed on the same day: kept in BOTH addedChildren
+ * and removedChildren (two honest facts about the day), but this cancels out
+ * in the day's net.
+ *
+ * net === 0 from an exact add+remove compensation is the ONE case where a
+ * single calendar day produces TWO ChildLinkChangeEvent objects instead of
+ * one — an add-only event (net = +addedChildren.length) and a remove-only
+ * event (net = -removedChildren.length), each carrying only its half of the
+ * day's added/removed lists. Rationale: the product spec's color is strictly
+ * binary (green = added, yellow = removed) with no third "mixed" color, so
+ * splitting into two honest dots is preferred over inventing one ambiguous
+ * dot. A day with unequal added/removed (net != 0, e.g. +2/-1) stays ONE
+ * event with both lists populated — only the net===0-via-compensation case
+ * splits.
+ * If net === 0 because there were no activities that day, there is no event
+ * at all for that day (nothing to report).
+ */
+export function parseChildLinkChanges(
+  activities: IssueLinkActivityItem[]
+): ChildLinkChangeEvent[] {
+  const changes = filterChildLinkActivities(activities);
+  if (changes.length === 0) return [];
+
+  const byDay = new Map<string, IssueLinkActivityItem[]>();
+  for (const activity of changes) {
+    const day = toDateString(activity.timestamp);
+    const existing = byDay.get(day);
+    if (existing) {
+      existing.push(activity);
+    } else {
+      byDay.set(day, [activity]);
+    }
+  }
+
+  const result: ChildLinkChangeEvent[] = [];
+
+  for (const dayActivities of byDay.values()) {
+    const changedAt = dayActivities[dayActivities.length - 1].timestamp;
+
+    const addedById = new Map<string, ChildIssueRef>();
+    const removedById = new Map<string, ChildIssueRef>();
+    for (const activity of dayActivities) {
+      for (const ref of toLinkedIssueRefArray(activity.added)) {
+        addedById.set(ref.id, toChildIssueRef(ref));
+      }
+      for (const ref of toLinkedIssueRefArray(activity.removed)) {
+        removedById.set(ref.id, toChildIssueRef(ref));
+      }
+    }
+
+    const addedChildren = Array.from(addedById.values());
+    const removedChildren = Array.from(removedById.values());
+    const net = addedChildren.length - removedChildren.length;
+
+    if (net === 0 && addedChildren.length > 0 && removedChildren.length > 0) {
+      result.push({
+        changedAt,
+        addedChildren,
+        removedChildren: [],
+        net: addedChildren.length,
+        childrenAsOfEvent: [],
+      });
+      result.push({
+        changedAt,
+        addedChildren: [],
+        removedChildren,
+        net: -removedChildren.length,
+        childrenAsOfEvent: [],
+      });
+    } else {
+      result.push({ changedAt, addedChildren, removedChildren, net, childrenAsOfEvent: [] });
+    }
+  }
+
+  result.sort((a, b) => a.changedAt - b.changedAt);
+  return result;
+}
+
+/**
+ * Fills in `childrenAsOfEvent` for each change via a BACKWARD pass, starting
+ * from the known-correct "now" snapshot (currentChildren, from the
+ * issues/{id}/links API add-on) and walking the events from last to first.
+ *
+ * Why backward, not forward-from-zero: the issue may have had children
+ * before LinksCategory activities were included in the fetched history, or
+ * before the activitiesPage's own $top=1000 window — counting "up from zero"
+ * from the first known activity risks an incorrect baseline (the same class
+ * of problem buildTransitionTimeline solves via extractCurrentState
+ * fallback). Anchoring on the definitely-correct "now" and rolling backward
+ * avoids that risk entirely.
+ *
+ * For event i (processed last-to-first): childrenAsOfEvent[i] is assigned
+ * the CURRENT working set (i.e. the set that holds AFTER event i was
+ * applied) BEFORE rolling the working set back to "before event i" for the
+ * next (earlier) iteration. Rolling back means: remove ids that were in
+ * event i's addedChildren (they didn't exist yet before this event), and add
+ * back ids that were in event i's removedChildren (they still existed
+ * before this event).
+ */
+export function buildChildrenTimeline(
+  changes: ChildLinkChangeEvent[],
+  currentChildren: ChildIssueRef[]
+): ChildLinkChangeEvent[] {
+  const working = new Map<string, ChildIssueRef>();
+  for (const child of currentChildren) {
+    working.set(child.id, child);
+  }
+
+  const result: ChildLinkChangeEvent[] = new Array(changes.length);
+
+  for (let i = changes.length - 1; i >= 0; i--) {
+    const change = changes[i];
+
+    result[i] = {
+      ...change,
+      childrenAsOfEvent: Array.from(working.values()),
+    };
+
+    for (const added of change.addedChildren) {
+      working.delete(added.id);
+    }
+    for (const removed of change.removedChildren) {
+      working.set(removed.id, removed);
+    }
+  }
+
+  return result;
+}
+
+function formatChildLine(child: ChildIssueRef): string {
+  return `${child.idReadable} — ${child.summary}`;
+}
+
+/**
+ * Builds 'dot' ChartIndicators for an issue's child-link-composition change
+ * events (see parseChildLinkChanges/buildChildrenTimeline above). Each event
+ * becomes one green (net > 0) or yellow (net < 0) dot, tooltip content per
+ * product spec section 6 (as amended by the tester's note on section 4.5/
+ * 6.1): the tooltip always shows the count "as of this moment"
+ * (childrenAsOfEvent), and ADDITIONALLY — only on the LAST event on the
+ * timeline — an explicit "current" count/using currentChildren, since a dot's
+ * date is a historical event, never "now", but the product spec's literal
+ * wording ("current count") still needs to be satisfied somewhere.
+ */
+export function buildChildLinkChangeIndicators(
+  issueId: string,
+  changes: ChildLinkChangeEvent[],
+  currentChildren: ChildIssueRef[]
+): ChartIndicator[] {
+  return changes.map((change, idx) => {
+    const isAddition = change.net > 0;
+    const isLastEvent = idx === changes.length - 1;
+
+    const tooltipTitle = isAddition
+      ? (change.addedChildren.length > 1 ? 'Дочерние задачи добавлены' : 'Дочерняя задача добавлена')
+      : 'Дочерняя задача удалена';
+
+    const tooltipRows: { label: string; value: string }[] = [];
+
+    for (const child of change.addedChildren) {
+      tooltipRows.push({ label: '', value: `Добавлено: ${formatChildLine(child)}` });
+    }
+    for (const child of change.removedChildren) {
+      tooltipRows.push({ label: '', value: `Удалено: ${formatChildLine(child)}` });
+    }
+
+    tooltipRows.push({ label: 'Дочерних задач на этот момент', value: String(change.childrenAsOfEvent.length) });
+    if (isLastEvent) {
+      tooltipRows.push({ label: 'Дочерних задач сейчас', value: String(currentChildren.length) });
+    }
+
+    tooltipRows.push({ label: '', value: 'Список дочерних задач:' });
+    if (change.childrenAsOfEvent.length === 0) {
+      tooltipRows.push({ label: '', value: 'Нет дочерних задач' });
+    } else {
+      const sorted = [...change.childrenAsOfEvent].sort((a, b) => a.idReadable.localeCompare(b.idReadable));
+      for (const child of sorted) {
+        tooltipRows.push({ label: '', value: formatChildLine(child) });
+      }
+    }
+
+    return {
+      kind: 'dot',
+      semanticType: 'child-link-change',
+      id: `${issueId}-child-link-${idx}-${change.changedAt}-${isAddition ? 'add' : 'remove'}`,
+      date: change.changedAt,
+      tooltipTitle,
+      tooltipRows,
+      color: isAddition ? '#4CAF50' : '#FFC107',
+    };
+  });
+}
+
 // ─── Main aggregator ───────────────────────────────────────────────────────────
 
 /**
@@ -805,12 +1090,17 @@ export function buildBlockingIndicators(
  * @param issues - Issues from loadIssues()
  * @param activitiesMap - Map of issueId -> raw activities from loadActivitiesBatch()
  * @param statusOrder - Ordered statuses from widget config; statusOrder[0] is the "start" status (may be empty)
+ * @param currentChildrenMap - Map of issueId -> current child issues from
+ *   loadCurrentChildIssuesBatch(), used to build child-link-change 'dot'
+ *   indicators (see buildChildLinkChangeIndicators). Optional/defaults to an
+ *   empty map so existing callers that haven't wired this up yet still compile.
  * @returns Array of IssueStateHistoryData, one per issue with a usable timeline
  */
 export function buildIssueStateHistoryData(
   issues: Issue[],
   activitiesMap: Map<string, IssueActivityItem[]>,
-  statusOrder: StatusOrderItem[]
+  statusOrder: StatusOrderItem[],
+  currentChildrenMap: Map<string, ChildIssueRef[]> = new Map()
 ): IssueStateHistoryData[] {
   const result: IssueStateHistoryData[] = [];
 
@@ -835,6 +1125,20 @@ export function buildIssueStateHistoryData(
     const estimateDateIndicators = buildEstimateDateChangeIndicators(issue.id, activities);
     const blockingIndicators = buildBlockingIndicators(issue.id, activities, issue.resolved);
 
+    // The activitiesPage response is one mixed list across all requested
+    // categories (see ACTIVITY_CATEGORIES in resources.ts) — LinksCategory
+    // items are structurally IssueLinkActivityItem (different added/removed
+    // shape), not IssueActivityItem, even though they arrive in the same
+    // array. Non-link activities simply won't have linkType/direction and
+    // are filtered out by filterChildLinkActivities()'s category check.
+    const linkActivities = activities as unknown as IssueLinkActivityItem[];
+    const currentChildren = currentChildrenMap.get(issue.id) ?? [];
+    const childLinkChanges = buildChildrenTimeline(
+      parseChildLinkChanges(linkActivities),
+      currentChildren
+    );
+    const childLinkIndicators = buildChildLinkChangeIndicators(issue.id, childLinkChanges, currentChildren);
+
     const overallStart = segments[0].startDate;
     const currentEstimateDate = extractCurrentEstimatedDate(issue);
     const currentEstimateFlag = buildCurrentEstimateFlagIndicator(
@@ -858,6 +1162,7 @@ export function buildIssueStateHistoryData(
         ...estimateDateIndicators,
         ...(currentEstimateFlag ? [currentEstimateFlag] : []),
         ...blockingIndicators,
+        ...childLinkIndicators,
       ],
     });
   }
@@ -920,5 +1225,34 @@ export function getDebugBlockingInfo(
     intervals,
     reasonChanges,
     subPeriodsByInterval,
+  };
+}
+
+/**
+ * Exposes the raw LinksCategory activities + derived child-link-change
+ * events for one issue, for the widget's debug-mode UI. This is the
+ * troubleshooting hook for the child-issues-indicator feature, since the
+ * LinksCategory activity shape (category id, presence of `direction`,
+ * presence of idReadable/summary inside added/removed) is UNTESTED against
+ * real YouTrack project data — see filterChildLinkActivities() above.
+ */
+export function getDebugChildLinkInfo(
+  activities: IssueActivityItem[],
+  currentChildren: ChildIssueRef[]
+): {
+  rawLinkActivities: IssueLinkActivityItem[];
+  filteredActivities: IssueLinkActivityItem[];
+  changes: ChildLinkChangeEvent[];
+  currentChildren: ChildIssueRef[];
+} {
+  const linkActivities = activities as unknown as IssueLinkActivityItem[];
+  const filteredActivities = filterChildLinkActivities(linkActivities);
+  const changes = buildChildrenTimeline(parseChildLinkChanges(linkActivities), currentChildren);
+
+  return {
+    rawLinkActivities: linkActivities.filter((a) => a.category?.id === 'LinksCategory'),
+    filteredActivities,
+    changes,
+    currentChildren,
   };
 }

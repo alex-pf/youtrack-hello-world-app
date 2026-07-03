@@ -132,6 +132,76 @@ export interface ActivityValue {
   value?: number | string;   // Unix ms timestamp for DateIssueCustomField (API may return as string)
 }
 
+// ─── Issue link activities (child issues indicator) ─────────────────────────
+
+// Mini-representation of an issue, as it arrives inside added/removed of a
+// LinksCategory activity — NOT the same shape as ActivityValue (id/name/
+// presentation/value), so it gets its own type rather than reusing that one.
+export interface LinkedIssueRef {
+  id: string;
+  idReadable: string;
+  summary?: string;   // may be absent in the activity payload — see resources.ts
+}
+
+// A single LinksCategory activity item. Extends the general activity shape
+// with linkType/direction and added/removed in LinkedIssueRef[] form instead
+// of ActivityValue[] — kept as a separate type (rather than folded into
+// IssueActivityItem) so the existing custom-field activity parsing is left
+// untouched.
+export interface IssueLinkActivityItem {
+  id: string;
+  timestamp: number;
+  author: ActivityAuthor;
+  category: { id: string };        // expected "LinksCategory" — see risks (UNTESTED against real data)
+  // For link activities, `field.name` is typically the DIRECTIONAL wording
+  // used for this specific activity (e.g. "Родитель для" on the parent side,
+  // "Подзадача для" on the child side of the very same link type) — unlike
+  // linkType.sourceToTarget/targetToSource, which are static properties of
+  // the link type itself and don't tell you which side fired. This is the
+  // primary fallback signal when `direction` is absent — see
+  // filterChildLinkActivities() in activity-parser.ts.
+  field?: {
+    id?: string;
+    name?: string;
+  };
+  linkType?: {
+    id?: string;
+    name?: string;                 // neutral name, e.g. "Subtask"
+    localizedName?: string;
+    sourceToTarget?: string;       // e.g. "Родитель для" / "Parent for"
+    targetToSource?: string;       // e.g. "Подзадача для" / "Subtask of"
+    directed?: boolean;
+  };
+  direction?: 'OUTWARD' | 'INWARD' | 'BOTH' | string; // not guaranteed present on all API versions
+  added: LinkedIssueRef[] | LinkedIssueRef | null;
+  removed: LinkedIssueRef[] | LinkedIssueRef | null;
+}
+
+// Current ("as of now") child issue, from the issues/{id}/links API add-on.
+export interface ChildIssueRef {
+  id: string;
+  idReadable: string;
+  summary: string;
+}
+
+// One parsed change-in-child-composition event (internal parser model, before
+// and after childrenAsOfEvent is filled in by buildChildrenTimeline). Per
+// calendar day this is normally ONE event, EXCEPT when net === 0 due to an
+// exact same-day add+remove compensation — see parseChildLinkChanges, which
+// then emits TWO events for that day (one add-only, one remove-only).
+export interface ChildLinkChangeEvent {
+  changedAt: number;             // activity timestamp (post per-day merge)
+  addedChildren: ChildIssueRef[];   // children added in this event/day
+  removedChildren: ChildIssueRef[]; // children removed in this event/day
+  // net > 0 -> green dot, net < 0 -> yellow dot (net === 0 never happens as
+  // a single event — see parseChildLinkChanges for the split-into-two case)
+  net: number;
+  // Accumulated child list AS OF this event (after applying it) — the
+  // tooltip's data source. Filled in by buildChildrenTimeline via a
+  // backward pass from the current ("now") snapshot.
+  childrenAsOfEvent: ChildIssueRef[];
+}
+
 // ─── Issue types (for fetching issues list) ─────────────────────────────────
 
 export interface IssueFieldValue {
@@ -222,7 +292,8 @@ export interface IssueStateHistoryData {
 export type IndicatorKind =
   | 'marker' // a single point-in-time tick/dot (e.g. "estimate date changed here")
   | 'flag'   // a point-in-time marker with an adaptive inline label (e.g. current estimate date)
-  | 'hatch'; // a diagonally-hatched date range (e.g. a blocked period)
+  | 'hatch'  // a diagonally-hatched date range (e.g. a blocked period)
+  | 'dot';   // a small filled circle event (e.g. a child issue link added/removed)
 
 export interface ChartIndicator {
   kind: IndicatorKind;

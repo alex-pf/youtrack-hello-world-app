@@ -4,9 +4,9 @@ import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { EmbeddableWidgetAPI } from '../../../@types/globals';
 import Configuration from './configuration';
-import { WidgetConfig, IssueStateHistoryData, IssueActivityItem, Issue, parseStoredConfig } from './types';
+import { WidgetConfig, IssueStateHistoryData, IssueActivityItem, Issue, ChildIssueRef, parseStoredConfig } from './types';
 import { loadIssuesWithActivities, loadIssuesCount, extractCurrentEstimatedDate } from './resources';
-import { buildIssueStateHistoryData, getDebugTransitionTimeline, getDebugBlockingInfo } from './activity-parser';
+import { buildIssueStateHistoryData, getDebugTransitionTimeline, getDebugBlockingInfo, getDebugChildLinkInfo } from './activity-parser';
 import GanttChart from './gantt-chart';
 import './app.css';
 
@@ -30,6 +30,7 @@ const INDICATOR_TYPE_OPTIONS: IndicatorTypeOption[] = [
   { semanticType: 'estimate-date-change', label: 'Estimate Date change' },
   { semanticType: 'estimate-date-current', label: 'Current Estimate Date' },
   { semanticType: 'blocking', label: 'Blocking periods' },
+  { semanticType: 'child-link-change', label: 'Child issues added/removed' },
 ];
 
 export default function App({ host }: Props) {
@@ -48,6 +49,7 @@ export default function App({ host }: Props) {
   // Raw data kept for debug mode rendering
   const [debugIssues, setDebugIssues] = useState<Issue[]>([]);
   const [debugActivitiesMap, setDebugActivitiesMap] = useState<Map<string, IssueActivityItem[]>>(new Map());
+  const [debugCurrentChildrenMap, setDebugCurrentChildrenMap] = useState<Map<string, ChildIssueRef[]>>(new Map());
   // Indicator visibility toggles — session-only, defaults to all types visible.
   const [visibleIndicatorTypes, setVisibleIndicatorTypes] = useState<Set<string>>(
     () => new Set(INDICATOR_TYPE_OPTIONS.map((o) => o.semanticType))
@@ -97,28 +99,31 @@ export default function App({ host }: Props) {
       const countLabel = count >= 0 ? ` (${count})` : '';
       await host.setTitle(`${title}${countLabel}`, '');
 
-      // Load issues + activities with progress updates
-      const { issues, activitiesMap } = await loadIssuesWithActivities(
+      // Load issues + activities + current child issues with progress updates
+      const { issues, activitiesMap, currentChildrenMap } = await loadIssuesWithActivities(
         host,
         cfg.search,
         (phase, loaded, total) => {
           if (!silent) {
             if (phase === 'issues') {
               setLoadingMessage(`Loading issues... ${loaded}`);
-            } else {
+            } else if (phase === 'activities') {
               setLoadingMessage(`Loading history... ${loaded}/${total}`);
+            } else {
+              setLoadingMessage(`Loading child issues... ${loaded}/${total}`);
             }
           }
         }
       );
 
       // Build chart data from parsed activities
-      const data = buildIssueStateHistoryData(issues, activitiesMap, cfg.statusOrder);
+      const data = buildIssueStateHistoryData(issues, activitiesMap, cfg.statusOrder, currentChildrenMap);
 
       setChartData(data);
       // Persist raw data for debug mode
       setDebugIssues(issues);
       setDebugActivitiesMap(activitiesMap);
+      setDebugCurrentChildrenMap(currentChildrenMap);
       setError(null);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -437,6 +442,29 @@ export default function App({ host }: Props) {
                       Intervals: <code>{JSON.stringify(blockingInfo.intervals)}</code>
                       <br />
                       Reason sub-periods per interval: <code>{JSON.stringify(blockingInfo.subPeriodsByInterval)}</code>
+                    </div>
+                  );
+                })()}
+                {(() => {
+                  // Debug for the child-issues-indicator feature — UNTESTED
+                  // against real project data, see activity-parser.ts doc
+                  // comment above filterChildLinkActivities(). Surfaces the
+                  // raw LinksCategory activities found, which of them passed
+                  // the "Родитель для"/"Subtask" outward-direction filter,
+                  // and the derived change events + current children
+                  // snapshot, so a mismatch against real API field names/
+                  // shapes can be diagnosed and reported.
+                  const currentChildren = debugCurrentChildrenMap.get(issue.issueId) ?? [];
+                  const childLinkInfo = getDebugChildLinkInfo(activities, currentChildren);
+                  return (
+                    <div className="ish-debug__estimate">
+                      Current children: <code>{JSON.stringify(childLinkInfo.currentChildren)}</code>
+                      <br />
+                      Raw LinksCategory activities: <code>{JSON.stringify(childLinkInfo.rawLinkActivities)}</code>
+                      <br />
+                      Filtered (parent-for-subtask) activities: <code>{JSON.stringify(childLinkInfo.filteredActivities)}</code>
+                      <br />
+                      Derived change events: <code>{JSON.stringify(childLinkInfo.changes)}</code>
                     </div>
                   );
                 })()}
