@@ -128,6 +128,7 @@ export interface ActivityValue {
   id?: string;
   name?: string;
   presentation?: string;
+  login?: string;             // present on User-typed values (e.g. Assignee field changes)
   $type?: string;
   value?: number | string;   // Unix ms timestamp for DateIssueCustomField (API may return as string)
 }
@@ -200,6 +201,35 @@ export interface ChildLinkChangeEvent {
   // tooltip's data source. Filled in by buildChildrenTimeline via a
   // backward pass from the current ("now") snapshot.
   childrenAsOfEvent: ChildIssueRef[];
+}
+
+// ─── Assignee change activities (assignee history indicator) ───────────────
+
+// A resolved assignee reference — id + best-available display name
+// (name ?? login ?? id). Used both for activity added/removed entries and
+// for the current ("as of now") snapshot read off issue.fields.
+export interface AssigneeRef {
+  id: string;
+  displayName: string;
+}
+
+// One parsed change-in-assignee-composition event (internal parser model,
+// before and after assigneesAsOfEvent is filled in by
+// buildAssigneesTimeline). Mirrors ChildLinkChangeEvent's per-day-merge +
+// net===0-split model exactly — see parseAssigneeChanges in
+// activity-parser.ts.
+export interface AssigneeChangeEvent {
+  changedAt: number;                 // activity timestamp (post per-day merge)
+  addedAssignees: AssigneeRef[];      // assignees added in this event/day
+  removedAssignees: AssigneeRef[];    // assignees removed in this event/day
+  // net > 0 -> green triangle, net < 0 -> blue triangle (net === 0 never
+  // happens as a single event — see parseAssigneeChanges for the
+  // split-into-two case)
+  net: number;
+  // Accumulated assignee list AS OF this event (after applying it). Filled
+  // in by buildAssigneesTimeline via a backward pass from the current
+  // ("now") snapshot (extractCurrentAssignees).
+  assigneesAsOfEvent: AssigneeRef[];
 }
 
 // ─── Issue types (for fetching issues list) ─────────────────────────────────
@@ -290,10 +320,11 @@ export interface IssueStateHistoryData {
 // treatments are needed — keep this shape minimal, don't add fields without
 // a concrete consumer.
 export type IndicatorKind =
-  | 'marker' // a single point-in-time tick/dot (e.g. "estimate date changed here")
-  | 'flag'   // a point-in-time marker with an adaptive inline label (e.g. current estimate date)
-  | 'hatch'  // a diagonally-hatched date range (e.g. a blocked period)
-  | 'dot';   // a small filled circle event (e.g. a child issue link added/removed)
+  | 'marker'   // a single point-in-time tick/dot (e.g. "estimate date changed here")
+  | 'flag'     // a point-in-time marker with an adaptive inline label (e.g. current estimate date)
+  | 'hatch'    // a diagonally-hatched date range (e.g. a blocked period)
+  | 'dot'      // a small filled circle event (e.g. a child issue link added/removed)
+  | 'triangle'; // an upward-pointing triangle pinned to the bottom of the status bar, with an inline count label (e.g. an assignee added/removed)
 
 export interface ChartIndicator {
   kind: IndicatorKind;

@@ -5,8 +5,8 @@ import DOMPurify from 'dompurify';
 import { EmbeddableWidgetAPI } from '../../../@types/globals';
 import Configuration from './configuration';
 import { WidgetConfig, IssueStateHistoryData, IssueActivityItem, Issue, ChildIssueRef, parseStoredConfig } from './types';
-import { loadIssuesWithActivities, loadIssuesCount, extractCurrentEstimatedDate } from './resources';
-import { buildIssueStateHistoryData, getDebugTransitionTimeline, getDebugBlockingInfo, getDebugChildLinkInfo } from './activity-parser';
+import { loadIssuesWithActivities, loadIssuesCount, extractCurrentEstimatedDate, extractCurrentAssignees } from './resources';
+import { buildIssueStateHistoryData, getDebugTransitionTimeline, getDebugBlockingInfo, getDebugChildLinkInfo, getDebugAssigneeInfo } from './activity-parser';
 import GanttChart from './gantt-chart';
 import './app.css';
 
@@ -31,6 +31,7 @@ const INDICATOR_TYPE_OPTIONS: IndicatorTypeOption[] = [
   { semanticType: 'estimate-date-current', label: 'Current Estimate Date' },
   { semanticType: 'blocking', label: 'Blocking periods' },
   { semanticType: 'child-link-change', label: 'Child issues added/removed' },
+  { semanticType: 'assignee-change', label: 'Assignee changes' },
 ];
 
 export default function App({ host }: Props) {
@@ -465,6 +466,28 @@ export default function App({ host }: Props) {
                       Filtered (parent-for-subtask) activities: <code>{JSON.stringify(childLinkInfo.filteredActivities)}</code>
                       <br />
                       Derived change events: <code>{JSON.stringify(childLinkInfo.changes)}</code>
+                    </div>
+                  );
+                })()}
+                {(() => {
+                  // Debug for the assignee-history indicator — the exact
+                  // Assignee/Исполнитель field name and User-value shape
+                  // haven't been confirmed against every real project setup,
+                  // see activity-parser.ts doc comment above
+                  // filterAssigneeActivities(). Surfaces which activities
+                  // matched the field-name regex and the derived change
+                  // events + current assignees snapshot, so a mismatch can
+                  // be diagnosed the same way the child-issues indicator's
+                  // was.
+                  const currentAssignees = issueObj ? extractCurrentAssignees(issueObj) : [];
+                  const assigneeInfo = getDebugAssigneeInfo(activities, currentAssignees);
+                  return (
+                    <div className="ish-debug__estimate">
+                      Current assignees: <code>{JSON.stringify(assigneeInfo.currentAssignees)}</code>
+                      <br />
+                      Filtered (assignee-field) activities: <code>{JSON.stringify(assigneeInfo.filteredActivities)}</code>
+                      <br />
+                      Derived change events: <code>{JSON.stringify(assigneeInfo.changes)}</code>
                     </div>
                   );
                 })()}
