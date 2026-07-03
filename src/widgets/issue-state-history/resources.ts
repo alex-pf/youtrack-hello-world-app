@@ -15,8 +15,7 @@ const MAX_PROJECTS = 200;
 const ISSUES_PACK_SIZE = 50;
 // LinksCategory added for the child issues indicator (Родитель для / Subtask
 // link activities) — see activity-parser.ts filterChildLinkActivities().
-// UNTESTED against real project data: the exact category name/shape for link
-// activities hasn't been confirmed against a live YouTrack instance.
+// Category name confirmed against a live YouTrack instance (2026-07-03).
 const ACTIVITY_CATEGORIES = 'CustomFieldCategory,IssueResolvedCategory,LinksCategory';
 const ACTIVITIES_PAGE_SIZE = 1000;
 // Delay between batched activity requests to avoid rate-limiting (ms)
@@ -387,10 +386,10 @@ interface IssueLinkEntry {
  * so the "current" snapshot and the historical change events agree on what
  * counts as a child.
  *
- * UNTESTED against real project data (see risk notes in activity-parser.ts
- * above filterChildLinkActivities) — direction detection falls back to
- * matching linkType.sourceToTarget against "Родитель для"/"Parent for" when
- * the `direction` field itself isn't present in the API response.
+ * Confirmed against a live YouTrack instance (2026-07-03): unlike the
+ * activitiesPage response (see filterChildLinkActivities in
+ * activity-parser.ts, which only gets `field.name`), the issues/{id}/links
+ * endpoint DOES populate `linkType` and `direction` as expected.
  */
 export async function loadCurrentChildIssues(
   host: EmbeddableWidgetAPI,

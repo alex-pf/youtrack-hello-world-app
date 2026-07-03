@@ -799,11 +799,13 @@ export function buildBlockingIndicators(
 // child) is ignored completely, as is every other link type (Relates,
 // Duplicates, Depends on, Cloned, ...).
 //
-// UNTESTED against real project data (same situation as the Blocked-field
-// heuristic above): the exact category name, presence of `direction`, and
-// presence of idReadable/summary inside added/removed for LinksCategory
-// activities have not been confirmed against a live YouTrack instance. See
-// getDebugChildLinkInfo() below for the diagnostic hook.
+// CONFIRMED against a live YouTrack instance (2026-07-03) via
+// getDebugChildLinkInfo(): category is `LinksCategory`, `$type` is
+// `LinksActivityItem`, `added`/`removed` do include `idReadable`/`summary`,
+// but `linkType` and the top-level `direction` field are BOTH absent from
+// the payload — the only usable signal is `field.name` (e.g. "Родитель
+// для" / "Подзадача для"), which is checked first in
+// filterChildLinkActivities() below.
 
 const CHILD_LINK_TYPE_NAME_RE = /subtask|подзадач/i;
 const CHILD_LINK_PARENT_FOR_RE = /родитель для|parent for/i;
@@ -841,6 +843,16 @@ function toChildIssueRef(ref: LinkedIssueRef): ChildIssueRef {
  * "Родитель для" / "Подзадача для" respectively, regardless of which side a
  * given activity happened on), so they can't distinguish direction per
  * activity — only `field.name` (or `direction`) can.
+ *
+ * CONFIRMED against a live YouTrack instance (2026-07-03): `LinksActivityItem`
+ * does NOT populate `linkType` at all — the field selector silently returns
+ * nothing for it. The only signal actually present is `field`, typed
+ * `LinkTypeFilterField`, whose `name` carries the DIRECTIONAL wording itself
+ * (e.g. `"Родитель для"` on the parent side, `"Подзадача для"` on the child
+ * side of the same Subtask link). There is also no top-level `direction`
+ * field on this activity shape. So `field.name` is both the "is this a
+ * Subtask-family link" AND the "which direction" signal — it must be checked
+ * FIRST, not gated behind a `linkType` family match that will never be true.
  */
 export function filterChildLinkActivities(
   activities: IssueLinkActivityItem[]
@@ -849,26 +861,26 @@ export function filterChildLinkActivities(
     .filter((a) => {
       if (a.category?.id !== 'LinksCategory') return false;
 
-      const typeName = a.linkType?.name ?? '';
-      const typeLocalized = a.linkType?.localizedName ?? '';
-      const sourceToTarget = a.linkType?.sourceToTarget ?? '';
-      const isSubtaskFamily =
-        CHILD_LINK_TYPE_NAME_RE.test(typeName) ||
-        CHILD_LINK_TYPE_NAME_RE.test(typeLocalized) ||
-        CHILD_LINK_PARENT_FOR_RE.test(sourceToTarget);
-      if (!isSubtaskFamily) return false;
-
-      if (a.direction) {
-        return a.direction === 'OUTWARD';
+      const fieldName = a.field?.name ?? '';
+      if (fieldName) {
+        if (CHILD_LINK_SUBTASK_OF_RE.test(fieldName)) return false;
+        return CHILD_LINK_PARENT_FOR_RE.test(fieldName);
       }
 
-      // No `direction` field — fall back to the per-activity directional
-      // field name. Reject outright if it matches the REVERSE ("Подзадача
-      // для"/"Subtask of") side, since that means this issue is the CHILD,
-      // not the parent, for THIS activity.
-      const fieldName = a.field?.name ?? '';
-      if (CHILD_LINK_SUBTASK_OF_RE.test(fieldName)) return false;
-      return CHILD_LINK_PARENT_FOR_RE.test(fieldName);
+      // Defensive fallback for API shapes where `field.name` is absent but
+      // `linkType`/`direction` metadata is present instead.
+      if (a.direction) {
+        const typeName = a.linkType?.name ?? '';
+        const typeLocalized = a.linkType?.localizedName ?? '';
+        const sourceToTarget = a.linkType?.sourceToTarget ?? '';
+        const isSubtaskFamily =
+          CHILD_LINK_TYPE_NAME_RE.test(typeName) ||
+          CHILD_LINK_TYPE_NAME_RE.test(typeLocalized) ||
+          CHILD_LINK_PARENT_FOR_RE.test(sourceToTarget);
+        return isSubtaskFamily && a.direction === 'OUTWARD';
+      }
+
+      return false;
     })
     .sort((a, b) => a.timestamp - b.timestamp);
 }
@@ -1231,10 +1243,10 @@ export function getDebugBlockingInfo(
 /**
  * Exposes the raw LinksCategory activities + derived child-link-change
  * events for one issue, for the widget's debug-mode UI. This is the
- * troubleshooting hook for the child-issues-indicator feature, since the
- * LinksCategory activity shape (category id, presence of `direction`,
- * presence of idReadable/summary inside added/removed) is UNTESTED against
- * real YouTrack project data — see filterChildLinkActivities() above.
+ * troubleshooting hook that was used to confirm the real LinksCategory
+ * activity shape (2026-07-03) against a live YouTrack project — see
+ * filterChildLinkActivities() above. Kept in place for any future
+ * discrepancy on other YouTrack versions/instances.
  */
 export function getDebugChildLinkInfo(
   activities: IssueActivityItem[],
