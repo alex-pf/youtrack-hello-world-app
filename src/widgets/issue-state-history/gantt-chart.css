@@ -197,6 +197,14 @@
   min-width: 50px;
 }
 
+.ish-gantt-tooltip__row--plain {
+  margin-top: 2px;
+}
+
+.ish-gantt-tooltip__row--plain + .ish-gantt-tooltip__row--plain {
+  margin-top: 1px;
+}
+
 /* ─── Empty state ─────────────────────────────────────────────────────────── */
 .ish-gantt-empty {
   display: flex;

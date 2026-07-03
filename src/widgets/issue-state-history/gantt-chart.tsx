@@ -104,9 +104,12 @@ function escHtml(s: string): string {
 
 function buildTooltipHtml(title: string, rows: { label: string; value: string }[]): string {
   const rowsHtml = rows
-    .map(
-      (r) =>
-        `<div class="ish-gantt-tooltip__row"><span class="ish-gantt-tooltip__label">${escHtml(r.label)}:</span><span>${escHtml(r.value)}</span></div>`
+    .map((r) =>
+      // A row with an empty label is a freeform line (e.g. a date range, or
+      // a bare reason string) — render just the value, no "label:" prefix.
+      r.label
+        ? `<div class="ish-gantt-tooltip__row"><span class="ish-gantt-tooltip__label">${escHtml(r.label)}:</span><span>${escHtml(r.value)}</span></div>`
+        : `<div class="ish-gantt-tooltip__row ish-gantt-tooltip__row--plain">${escHtml(r.value)}</div>`
     )
     .join('');
   return `<div class="ish-gantt-tooltip__header">${escHtml(title)}</div>${rowsHtml}`;
