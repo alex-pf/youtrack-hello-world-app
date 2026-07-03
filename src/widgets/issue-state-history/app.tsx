@@ -403,6 +403,20 @@ export default function App({ host }: Props) {
                   );
                 })()}
                 {(() => {
+                  const estimateChangeActivities = activities.filter((a) => {
+                    const fieldName = a.field?.name?.toLowerCase() ?? '';
+                    return fieldName.includes('estimated') || fieldName.includes('due date') || fieldName.includes('deadline');
+                  });
+                  if (estimateChangeActivities.length === 0) return null;
+                  return (
+                    <div className="ish-debug__estimate">
+                      Estimated Date change activities (raw added/removed):
+                      <br />
+                      <code>{JSON.stringify(estimateChangeActivities.map((a) => ({ timestamp: a.timestamp, added: a.added, removed: a.removed })))}</code>
+                    </div>
+                  );
+                })()}
+                {(() => {
                   // Debug for the Task 4 blocking-period heuristic — UNTESTED
                   // against real project data, see activity-parser.ts doc
                   // comment above buildBlockingIndicators(). Surfaces which

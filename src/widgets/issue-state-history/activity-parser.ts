@@ -321,7 +321,22 @@ export function parseEstimateDateChanges(
     if (vals.length === 0) return null;
     const val = vals[0];
 
-    // PRIMARY: accept both number and string representation of Unix ms timestamp
+    // Same primitive-vs-object surprise as DateIssueCustomField's plain
+    // field value (see extractCurrentEstimatedDate in resources.ts): the
+    // activity's added/removed entry for a date field change may arrive as
+    // a bare number/numeric-string rather than an {value,id,presentation}
+    // object. Check for that FIRST.
+    if (typeof val === 'number') {
+      return val > 0 ? val : null;
+    }
+    if (typeof val === 'string') {
+      const asNum = Number(val);
+      if (!isNaN(asNum) && asNum > 0) return asNum;
+      const asDate = Date.parse(val);
+      return isNaN(asDate) ? null : asDate;
+    }
+
+    // PRIMARY (object shape): accept both number and string representation of Unix ms timestamp
     if (val.value !== undefined && val.value !== null) {
       const ts = Number(val.value);
       if (!isNaN(ts) && ts > 0) return ts;
