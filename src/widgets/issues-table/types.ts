@@ -77,7 +77,12 @@ export interface ProjectCustomField {
 
 export interface IssueField {
   id: string;
-  value: IssueFieldValue | IssueFieldValue[] | null;
+  // Single-value text/date/integer/float custom fields (e.g. "Reason for
+  // blocking") often come back as a bare string/number rather than
+  // `{ name, presentation, ... }` — same class of surprise as
+  // DateIssueCustomField elsewhere in this project. Multi-value fields
+  // (enum/user/version bundles) are always objects, never raw primitives.
+  value: IssueFieldValue | IssueFieldValue[] | string | number | null;
   projectCustomField: ProjectCustomField;
 }
 

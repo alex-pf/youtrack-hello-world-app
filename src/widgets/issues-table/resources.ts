@@ -28,9 +28,14 @@ export function extractAvailableFields(issues: Issue[]): FieldColumnConfig[] {
       if (!fieldDef) continue;
       const key = fieldDef.name;
       if (seen.has(key)) continue;
-      // skip text-type fields (descriptions etc.)
-      const valueType = fieldDef.fieldType?.valueType;
-      if (valueType === 'text') continue;
+      // Note: previously excluded valueType === 'text' fields here to hide
+      // huge description-like blobs, but that also hid legitimate small
+      // free-text fields (e.g. "Reason for blocking") whenever a project
+      // happens to configure them as a multi-line "Text" field rather than
+      // a single-line "string" field — the same custom field name can be
+      // typed differently per project if it isn't a shared field prototype.
+      // issues-table.css already truncates long cell values (.it-td), so
+      // there's no need to blanket-exclude by valueType anymore.
       seen.add(key);
       fields.push({
         key,
