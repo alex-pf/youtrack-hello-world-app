@@ -395,6 +395,45 @@ export default function App({ host }: Props) {
                   )}
                 </div>
                 {(() => {
+                  // Debug for the Issues Progress widget's "Enable Lead Time
+                  // thresholds" feature, which fails on some prod projects
+                  // with "No issue types found" — it requires a custom
+                  // field named EXACTLY "Type" whose fieldType.valueType
+                  // includes "enum" (see loadProjectCustomFields in
+                  // issues-progress/resources.ts). Dumps every custom
+                  // field's real name/localizedName/valueType, plus any
+                  // "type"/"тип"-like field's raw value, so a mismatch
+                  // (different name, localization, or a differently-labeled
+                  // valueType) can be diagnosed without guessing.
+                  const allFields = (issueObj?.fields ?? []).map((f) => ({
+                    name: f.projectCustomField?.field?.name,
+                    localizedName: f.projectCustomField?.field?.localizedName,
+                    valueType: f.projectCustomField?.field?.fieldType?.valueType,
+                  }));
+                  const typeField = issueObj?.fields.find((f) => {
+                    const name = f.projectCustomField?.field?.name?.toLowerCase() ?? '';
+                    const localized = f.projectCustomField?.field?.localizedName?.toLowerCase() ?? '';
+                    return (
+                      name.includes('type') ||
+                      localized.includes('type') ||
+                      name.includes('тип') ||
+                      localized.includes('тип')
+                    );
+                  });
+                  return (
+                    <div className="ish-debug__estimate">
+                      All custom fields (name / localizedName / valueType): <code>{JSON.stringify(allFields)}</code>
+                      <br />
+                      &quot;Type&quot;-like field raw value: <code>{typeField ? JSON.stringify({
+                        name: typeField.projectCustomField?.field?.name,
+                        localizedName: typeField.projectCustomField?.field?.localizedName,
+                        valueType: typeField.projectCustomField?.field?.fieldType?.valueType,
+                        value: typeField.value,
+                      }) : 'not found'}</code>
+                    </div>
+                  );
+                })()}
+                {(() => {
                   const dateField = issueObj?.fields.find((f) => {
                     const fieldName = f.projectCustomField?.field?.name?.toLowerCase() ?? '';
                     return fieldName.includes('estimated') || fieldName.includes('due date') || fieldName.includes('deadline');
