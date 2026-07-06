@@ -178,7 +178,14 @@ export interface IssueChartData {
   // Estimate date changes (deduplicated per day)
   estimateDateChanges: EstimateDateChange[];
   totalDays: number;           // sum of all segment days
-  createdAt?: number;          // Unix ms issue creation timestamp
+  // Unix ms timestamp of the "lead time start" anchor — when the issue
+  // first entered the configured start status (statusOrder[0]), or issue
+  // creation time if it never reached that status (or none is configured).
+  // This is the "day 0" reference for Estimated Date ticks and the
+  // Projected Lead Time marker — deliberately NOT always issue creation,
+  // since time spent in unconfigured statuses before the issue entered the
+  // tracked workflow shouldn't count toward lead time.
+  leadTimeStartAt?: number;
   projectedLeadTimeDays?: number;
   projectedLTDate?: number;
 }
