@@ -251,16 +251,21 @@ export default function GanttChart({
         if (issueData.estimateDateChanges.length === 0) return;
 
         const rowG = d3.select(this);
-        // Use issueData.createdAt if available; fall back to deriving from totalDays
-        const issueCreatedAt = issueData.createdAt ?? (
+        // Anchor at leadTimeStartAt (when the issue entered the configured
+        // start status), NOT issue creation — time spent in unconfigured
+        // statuses before the issue entered the tracked workflow shouldn't
+        // shift where these ticks land. Falls back to deriving from
+        // totalDays if it's somehow missing (defensive; buildIssueChartData
+        // always sets it).
+        const leadTimeStartAt = issueData.leadTimeStartAt ?? (
           issueData.totalDays > 0
             ? Date.now() - issueData.totalDays * 24 * 60 * 60 * 1000
             : Date.now()
         );
 
         issueData.estimateDateChanges.forEach((change, idx) => {
-          const daysSinceCreation = (change.changedAt - issueCreatedAt) / (24 * 60 * 60 * 1000);
-          const tickX = xScale(Math.max(0, daysSinceCreation));
+          const daysSinceStart = (change.changedAt - leadTimeStartAt) / (24 * 60 * 60 * 1000);
+          const tickX = xScale(Math.max(0, daysSinceStart));
 
           rowG.append('line')
             .attr('class', 'estimate-tick')

@@ -284,6 +284,39 @@ export function parseStateTimeline(
   return timeline;
 }
 
+/**
+ * Finds the timestamp the issue FIRST entered the configured "start" status
+ * (statusOrder[0]) — the "day 0" anchor for the Estimated Date ticks and the
+ * Projected Lead Time marker, used INSTEAD OF issue creation time: time
+ * spent in unconfigured statuses before the issue entered the tracked
+ * workflow shouldn't count toward lead time.
+ *
+ * Falls back to issueCreatedAt when the issue never reached the start
+ * status (or none is configured) — mirrors the issue-state-history widget's
+ * buildDateSegments()/neverReachedStartStatus fallback.
+ *
+ * @param activities - Raw activity items
+ * @param statusOrder - Ordered statuses from widget config; statusOrder[0] is the "start" status
+ * @param issueCreatedAt - Issue creation timestamp (fallback)
+ */
+export function findLeadTimeStartAt(
+  activities: IssueActivityItem[],
+  statusOrder: StatusOrderItem[],
+  issueCreatedAt: number
+): number {
+  if (statusOrder.length === 0) return issueCreatedAt;
+
+  const startStatus = statusOrder[0];
+  const timeline = parseStateTimeline(activities, issueCreatedAt);
+
+  const entry = timeline.find((e) =>
+    e.stateId && startStatus.id
+      ? e.stateId === startStatus.id
+      : e.stateName.toLowerCase() === startStatus.name.toLowerCase()
+  );
+  return entry?.timestamp ?? issueCreatedAt;
+}
+
 // ─── Estimate Date History Parser ─────────────────────────────────────────────
 
 /**
@@ -393,13 +426,15 @@ function getEstimateDateFromFields(issue: Issue): number | null {
  * Computes projected lead time (days) and the target date for an issue.
  * Prefers the current field value from issue.fields, falls back to activity history.
  *
+ * @param leadTimeStartAt - "day 0" anchor (see findLeadTimeStartAt) — when
+ *   the issue entered the configured start status, NOT issue creation.
  * @returns { days, date } or null if no estimate date is available
  */
 function calculateProjectedLeadTime(
   issue: Issue,
-  estimateDateChanges: EstimateDateChange[]
+  estimateDateChanges: EstimateDateChange[],
+  leadTimeStartAt: number
 ): { days: number; date: number } | null {
-  if (!issue.created) return null;
   const lastChange = estimateDateChanges[estimateDateChanges.length - 1];
   const estimatedDateMs =
     getEstimateDateFromFields(issue) ??
@@ -407,7 +442,7 @@ function calculateProjectedLeadTime(
     lastChange?.fromDate ??
     null;
   if (estimatedDateMs === null) return null;
-  const days = (estimatedDateMs - issue.created) / (24 * 60 * 60 * 1000);
+  const days = (estimatedDateMs - leadTimeStartAt) / (24 * 60 * 60 * 1000);
   if (days <= 0) return null;
   return { days, date: estimatedDateMs };
 }
@@ -431,11 +466,12 @@ export function buildIssueChartData(
   showEstimateDate: boolean,
   showProjectedLT: boolean = false
 ): IssueChartData {
+  const issueCreatedAt = issue.created ?? Date.now();
   const segments = parseStateSegments(
     issue.id,
     activities,
     statusOrder,
-    issue.created ?? Date.now()
+    issueCreatedAt
   );
 
   // Parse estimate date changes when needed by either flag
@@ -443,9 +479,14 @@ export function buildIssueChartData(
     ? parseEstimateDateChanges(issue.id, activities)
     : [];
 
+  // "Day 0" anchor for both the Estimated Date ticks (gantt-chart.tsx) and
+  // the Projected Lead Time marker below — when the issue entered the
+  // configured start status, not issue creation (see findLeadTimeStartAt).
+  const leadTimeStartAt = findLeadTimeStartAt(activities, statusOrder, issueCreatedAt);
+
   // Projected Lead Time: prefer current field value (reliable), fall back to activity history.
   const projectedLT = showProjectedLT
-    ? calculateProjectedLeadTime(issue, estimateDateChanges)
+    ? calculateProjectedLeadTime(issue, estimateDateChanges, leadTimeStartAt)
     : null;
   const projectedLeadTimeDays = projectedLT?.days;
   const projectedLTDate = projectedLT?.date;
@@ -464,7 +505,7 @@ export function buildIssueChartData(
     totalDays,
     projectedLeadTimeDays,
     projectedLTDate,
-    createdAt: issue.created ?? undefined,
+    leadTimeStartAt,
   };
 }
 
