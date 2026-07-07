@@ -39,8 +39,12 @@ const ACTIVITY_FIELDS = `activities(${ACTIVITY_ITEM_FIELDS}),cursor,hasAfter`;
 
 const PROJECT_FIELDS = 'id,name,shortName';
 
+// localizedName is included alongside name because a project can rename its
+// display label for a field (e.g. a field technically named "Client type"
+// shown to users as "Type") — see loadProjectCustomFields/extractIssueTypeName,
+// which match against either.
 const PROJECT_CUSTOM_FIELD_FIELDS =
-  'id,field(id,name,fieldType(id,valueType)),' +
+  'id,field(id,name,localizedName,fieldType(id,valueType)),' +
   'bundle(id,values(id,name,ordinal,isResolved,color(id,background,foreground)))';
 
 // ─── Query Assist ────────────────────────────────────────────────────────────
@@ -161,6 +165,7 @@ export async function loadProjectCustomFields(
     for (const cf of fields) {
       const valueType = cf.field?.fieldType?.valueType?.toLowerCase() ?? '';
       const fieldName = cf.field?.name?.toLowerCase() ?? '';
+      const fieldLocalizedName = cf.field?.localizedName?.toLowerCase() ?? '';
 
       // State-type fields
       if (valueType.includes('state') && cf.bundle?.values) {
@@ -175,8 +180,12 @@ export async function loadProjectCustomFields(
         }
       }
 
-      // Exact "Type" enum field
-      if (fieldName === 'type' && valueType.includes('enum') && cf.bundle?.values) {
+      // "Type" enum field — match either the field's technical name or its
+      // project-level display name (localizedName), since a project can
+      // rename an existing field's label (e.g. "Client type" displayed as
+      // "Type") without changing its underlying name.
+      const isTypeField = fieldName === 'type' || fieldLocalizedName === 'type';
+      if (isTypeField && valueType.includes('enum') && cf.bundle?.values) {
         for (const val of cf.bundle.values) {
           if (!allTypes.has(val.id)) {
             allTypes.set(val.id, { id: val.id, name: val.name });
@@ -276,9 +285,10 @@ export async function loadActivitiesBatch(
 // ─── Helper: extract issue type name from issue fields ───────────────────────
 
 export function extractIssueTypeName(issue: Issue): string | undefined {
-  const typeField = issue.fields.find(
-    (f) => f.projectCustomField?.field?.name?.toLowerCase() === 'type'
-  );
+  const typeField = issue.fields.find((f) => {
+    const field = f.projectCustomField?.field;
+    return field?.name?.toLowerCase() === 'type' || field?.localizedName?.toLowerCase() === 'type';
+  });
   if (!typeField) return undefined;
   const val = typeField.value;
   if (Array.isArray(val)) return val[0]?.name;
