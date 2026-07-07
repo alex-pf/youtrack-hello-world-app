@@ -7,7 +7,7 @@ import Configuration from './configuration';
 import GanttChart from './gantt-chart';
 import { WidgetConfig, IssueChartData, IssueActivityItem, Issue, parseStoredConfig } from './types';
 import { loadIssuesWithActivities, loadIssuesCount } from './resources';
-import { buildChartData, parseStateTimeline } from './activity-parser';
+import { buildChartData, parseStateTimeline, findLeadTimeStartAt } from './activity-parser';
 import './app.css';
 
 interface Props {
@@ -330,16 +330,24 @@ export default function App({ host }: Props) {
           {chartData.map((issue) => {
             const issueObj = debugIssues.find((i) => i.id === issue.issueId);
             const activities = debugActivitiesMap.get(issue.issueId) ?? [];
-            const timeline = parseStateTimeline(
-              activities,
-              issueObj?.created ?? Date.now()
-            );
+            const issueCreatedAt = issueObj?.created ?? Date.now();
+            const timeline = parseStateTimeline(activities, issueCreatedAt);
+            const leadTimeStartAt = findLeadTimeStartAt(activities, config?.statusOrder ?? [], issueCreatedAt);
+            const startStatusName = config?.statusOrder?.[0]?.name ?? '(none configured)';
             return (
               <div key={issue.issueId} className="ip-debug__issue">
                 <div className="ip-debug__issue-title">
                   <strong>{issue.idReadable}</strong>
                   {': '}
                   {issue.summary}
+                </div>
+                <div className="ip-debug__no-history">
+                  Start status: <code>{startStatusName}</code>
+                  {' | '}
+                  Created: <code>{new Date(issueCreatedAt).toISOString()}</code>
+                  {' | '}
+                  leadTimeStartAt: <code>{new Date(leadTimeStartAt).toISOString()}</code>
+                  {leadTimeStartAt === issueCreatedAt && ' (fell back to creation — start status not found in timeline)'}
                 </div>
                 {timeline.length === 0 ? (
                   <div className="ip-debug__no-history">No transition data</div>

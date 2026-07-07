@@ -96,6 +96,7 @@ export interface ProjectCustomFieldInfo {
   field: {
     id: string;
     name: string;
+    localizedName?: string;
     fieldType: { id: string; valueType: string };
   };
   bundle?: {

@@ -309,10 +309,18 @@ export function findLeadTimeStartAt(
   const startStatus = statusOrder[0];
   const timeline = parseStateTimeline(activities, issueCreatedAt);
 
+  // Match by id OR by name — NOT id-only-when-both-present. On a dashboard
+  // whose search spans multiple projects, the same-named state (e.g. "Dev
+  // of Arch") can have a DIFFERENT bundle element id per project, since
+  // state fields are typically configured per-project rather than shared.
+  // An id-exclusive comparison would then silently fail to match for every
+  // project except whichever one statusOrder[0].id happened to be sourced
+  // from in the configuration UI, falling back to issueCreatedAt for all
+  // the others. Name is the more reliable cross-project signal here, since
+  // that's what the user actually picked in the Status Order config.
   const entry = timeline.find((e) =>
-    e.stateId && startStatus.id
-      ? e.stateId === startStatus.id
-      : e.stateName.toLowerCase() === startStatus.name.toLowerCase()
+    (e.stateId && startStatus.id && e.stateId === startStatus.id) ||
+    e.stateName.toLowerCase() === startStatus.name.toLowerCase()
   );
   return entry?.timestamp ?? issueCreatedAt;
 }

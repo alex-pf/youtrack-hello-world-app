@@ -235,10 +235,18 @@ export function buildDateSegments(
   // trimmed and every issue is treated as "never reached start status".
   const startStatus = statusOrder.length > 0 ? statusOrder[0] : null;
 
+  // Match by id OR by name — NOT id-only-when-both-present. On a dashboard
+  // whose search spans multiple projects, the same-named status can have a
+  // DIFFERENT bundle element id per project (state fields are typically
+  // configured per-project, not shared), so an id-exclusive comparison
+  // would silently fail to match for every project except whichever one
+  // startStatus.id happened to be sourced from in the configuration UI.
   const isStartStatus = (stateName: string, stateId: string): boolean => {
     if (!startStatus) return false;
-    if (stateId && startStatus.id) return stateId === startStatus.id;
-    return stateName.toLowerCase() === startStatus.name.toLowerCase();
+    return (
+      (!!stateId && !!startStatus.id && stateId === startStatus.id) ||
+      stateName.toLowerCase() === startStatus.name.toLowerCase()
+    );
   };
 
   // Build the full segment list (end date of each = start of next; last = now/resolved)
