@@ -28,6 +28,12 @@ const STATUS_COLORS = [
   '#00BCD4', '#8BC34A', '#FF5722', '#607D8B', '#E91E63',
 ];
 
+// Fixed gray used ONLY for segments whose status is not present in the
+// configured statusOrder (isUnconfigured === true). Deliberate "unknown
+// status" signal — must never be reused as a fallback palette color for
+// configured-but-colorless statuses.
+const UNCONFIGURED_COLOR = '#9E9E9E';
+
 // ─── XSS-safe tooltip builder ─────────────────────────────────────────────────
 function buildTooltipHtml(title: string, rows: { label: string; value: string }[]): string {
   const escHtml = (s: string) =>
@@ -224,11 +230,15 @@ export default function GanttChart({
         if (seg.durationDays <= 0) return;
 
         const segWidth = xScale(seg.durationDays) - xScale(0);
-        const color =
-          statusColorMap.get(seg.statusId) ??
-          statusColorMap.get(seg.statusName.toLowerCase()) ??
-          seg.color ??
-          STATUS_COLORS[segIdx % STATUS_COLORS.length];
+        const color = seg.isUnconfigured
+          ? UNCONFIGURED_COLOR
+          : statusColorMap.get(seg.statusId) ??
+            statusColorMap.get(seg.statusName.toLowerCase()) ??
+            seg.color ??
+            STATUS_COLORS[segIdx % STATUS_COLORS.length];
+        const tooltipText = seg.isUnconfigured
+          ? `${seg.statusName} (not in configured status list): ${seg.durationDays.toFixed(1)} days`
+          : `${seg.statusName}: ${seg.durationDays.toFixed(1)} days`;
 
         rowG.append('rect')
           .attr('class', 'segment')
@@ -239,7 +249,7 @@ export default function GanttChart({
           .attr('fill', color)
           .attr('rx', 2)
           .append('title')
-          .text(`${seg.statusName}: ${seg.durationDays.toFixed(1)} days`);
+          .text(tooltipText);
 
         xOffset += segWidth;
       });
@@ -533,6 +543,13 @@ export default function GanttChart({
               <span className="ip-gantt-legend__label">{s.name}</span>
             </div>
           ))}
+          <div className="ip-gantt-legend__item">
+            <span
+              className="ip-gantt-legend__dot"
+              style={{ background: UNCONFIGURED_COLOR }}
+            />
+            <span className="ip-gantt-legend__label">Other</span>
+          </div>
         </div>
       )}
 

@@ -189,6 +189,10 @@ export interface IssueChartData {
   leadTimeStartAt?: number;
   projectedLeadTimeDays?: number;
   projectedLTDate?: number;
+  // True when the issue never entered statusOrder[0] — segments fall back to
+  // the full chronological history from creation instead of being anchored
+  // at the configured start status.
+  neverReachedStartStatus: boolean;
 }
 
 export interface StatusSegment {
@@ -196,6 +200,10 @@ export interface StatusSegment {
   statusId: string;
   durationDays: number;
   color?: string;              // from BundleValue.color.background
+  // True when this segment's status is not present in the configured
+  // statusOrder — rendered gray (with the real status name) instead of
+  // being dropped from the timeline.
+  isUnconfigured: boolean;
 }
 
 // ─── Issue types (for fetching issues list) ─────────────────────────────────

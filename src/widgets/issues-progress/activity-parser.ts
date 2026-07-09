@@ -47,6 +47,31 @@ function isNumberValue(v: unknown): v is number {
 }
 
 /**
+ * Shared match criterion between a timeline entry's (stateName, stateId) and
+ * a target status: match by id OR by name (case-insensitive) — NOT
+ * id-exclusive. On a dashboard whose search spans multiple projects, the
+ * same-named state (e.g. "Dev of Arch") can have a DIFFERENT bundle element
+ * id per project, since state fields are typically configured per-project
+ * rather than shared. Name is the more reliable cross-project signal here,
+ * since that's what the user actually picked in the Status Order config.
+ *
+ * Used by both findLeadTimeStartAt (the "day 0" anchor) and
+ * parseStateSegments (the segment start-trim point), so the two stay
+ * consistent — segments should start exactly at the same point that anchors
+ * the Estimated Date / Projected Lead Time markers.
+ */
+function matchesStatus(
+  stateName: string,
+  stateId: string,
+  target: { id: string; name: string }
+): boolean {
+  return (
+    (!!stateId && !!target.id && stateId === target.id) ||
+    stateName.toLowerCase() === target.name.toLowerCase()
+  );
+}
+
+/**
  * Filters and sorts activity items to only state-change events.
  * Shared by parseStateSegments and parseStateTimeline.
  */
@@ -79,153 +104,122 @@ function filterStateActivities(activities: IssueActivityItem[]): IssueActivityIt
 // ─── State History Parser ─────────────────────────────────────────────────────
 
 /**
- * Parses raw activity items for a single issue and returns time-in-status segments.
+ * Parses raw activity items for a single issue and returns time-in-status segments,
+ * in CHRONOLOGICAL order (not grouped/aggregated by status).
  *
  * Algorithm:
- * 1. Filter activities to only state-change events (field.name === 'State' or category CustomFieldChanges with state field)
- * 2. Sort by timestamp ascending
- * 3. Walk through transitions: for each transition, compute duration from previous transition timestamp to current
- * 4. Map each (stateName, durationMs) pair to a StatusSegment using the statusOrder config for color lookup
- * 5. Only include segments for statuses that are in statusOrder (filter out unlisted statuses)
- * 6. If statusOrder is empty, include all statuses found in history
+ * 1. Build the raw chronological state timeline via parseStateTimeline() (shared
+ *    with the debug view, so there's a single source of truth for "what happened when").
+ * 2. If no statusOrder is configured, preserve the OLD aggregate-by-status-name
+ *    behavior for backward compatibility (no chronology, no gray segments).
+ * 3. Otherwise, walk the timeline in order and emit ONE segment per timeline
+ *    entry (no aggregation across revisits) — configured statuses keep their
+ *    color, everything else is flagged isUnconfigured so it can be rendered
+ *    gray instead of being dropped.
+ * 4. Trim the segment list so it STARTS at the first segment that matches
+ *    statusOrder[0] (same id-or-name criterion as findLeadTimeStartAt), so the
+ *    Gantt timeline and the lead-time anchor agree on "day 0". If the issue
+ *    never reached statusOrder[0], fall back to the full history and flag
+ *    neverReachedStartStatus.
  *
  * @param issueId - Internal issue ID (for logging)
  * @param activities - Raw activity items from GET issues/{id}/activities
  * @param statusOrder - Ordered list of statuses from widget config
  * @param issueCreatedAt - Issue creation timestamp (used as start time if no initial state change found)
- * @returns Array of StatusSegment objects in statusOrder order
+ * @returns segments (chronological order) and whether the issue ever reached statusOrder[0]
  */
 export function parseStateSegments(
   issueId: string,
   activities: IssueActivityItem[],
   statusOrder: StatusOrderItem[],
   issueCreatedAt: number
-): StatusSegment[] {
-  // Filter to state-change activities only — multi-method, language-independent
-  const stateChanges = filterStateActivities(activities);
+): { segments: StatusSegment[]; neverReachedStartStatus: boolean } {
+  const timeline = parseStateTimeline(activities, issueCreatedAt);
 
-  if (stateChanges.length === 0) {
-    return [];
+  if (timeline.length === 0) {
+    return { segments: [], neverReachedStartStatus: statusOrder.length > 0 };
   }
 
-  // Build a timeline of (timestamp, stateName) pairs
-  // Each entry means "entered this state at this timestamp"
-  const timeline: Array<{ timestamp: number; stateName: string; stateId: string }> = [];
-
-  for (const activity of stateChanges) {
-    const removedVals = toActivityValueArray(activity.removed);
-    const addedVals = toActivityValueArray(activity.added);
-
-    const fromStateName = removedVals[0]?.name ?? removedVals[0]?.presentation ?? '';
-    const toStateName = addedVals[0]?.name ?? addedVals[0]?.presentation ?? '';
-    const toStateId = addedVals[0]?.id ?? '';
-
-    // First transition: record the "from" state starting at issue creation
-    if (timeline.length === 0 && fromStateName) {
-      const fromStateId = removedVals[0]?.id ?? '';
-      timeline.push({
-        timestamp: issueCreatedAt,
-        stateName: fromStateName,
-        stateId: fromStateId,
-      });
-    }
-
-    if (toStateName) {
-      timeline.push({
-        timestamp: activity.timestamp,
-        stateName: toStateName,
-        stateId: toStateId,
-      });
-    }
-  }
-
-  if (timeline.length === 0) return [];
-
-  // Build a map of statusName → color from statusOrder
-  const statusColorMap = new Map<string, string | undefined>();
-  const statusIdColorMap = new Map<string, string | undefined>();
-  for (const s of statusOrder) {
-    statusColorMap.set(s.name.toLowerCase(), s.color);
-    statusIdColorMap.set(s.id, s.color);
-  }
-
-  // Determine which statuses to include
-  const statusOrderNames = new Set(statusOrder.map((s) => s.name.toLowerCase()));
-  const statusOrderIds = new Set(statusOrder.map((s) => s.id));
-  const filterByStatusOrder = statusOrder.length > 0;
-
-  // Accumulate duration per status name
-  const durationByStatus = new Map<string, { id: string; durationMs: number; color?: string }>();
   const now = Date.now();
 
+  if (statusOrder.length === 0) {
+    // Preserve OLD behavior exactly: aggregate duration by status name,
+    // no chronology, no gray/unconfigured concept — nothing is configured
+    // so there's nothing to distinguish as "unconfigured".
+    const durationByStatus = new Map<string, { id: string; durationMs: number }>();
+
+    for (let i = 0; i < timeline.length; i++) {
+      const entry = timeline[i];
+      const nextTimestamp = i < timeline.length - 1 ? timeline[i + 1].timestamp : now;
+      const durationMs = nextTimestamp - entry.timestamp;
+      if (durationMs <= 0) continue;
+
+      const existing = durationByStatus.get(entry.stateName);
+      if (existing) {
+        existing.durationMs += durationMs;
+      } else {
+        durationByStatus.set(entry.stateName, { id: entry.stateId, durationMs });
+      }
+    }
+
+    const segments: StatusSegment[] = Array.from(durationByStatus.entries()).map(
+      ([name, val]) => ({
+        statusName: name,
+        statusId: val.id,
+        durationDays: msToDays(val.durationMs),
+        isUnconfigured: false,
+      })
+    );
+    return { segments, neverReachedStartStatus: false };
+  }
+
+  // statusOrder.length > 0 — new chronological logic.
+  const startStatus = statusOrder[0];
+
+  // Build id/name lookup maps once, up front, for resolving each timeline
+  // entry to its configured StatusOrderItem (for color lookup).
+  const byId = new Map<string, StatusOrderItem>();
+  const byName = new Map<string, StatusOrderItem>();
+  for (const s of statusOrder) {
+    byId.set(s.id, s);
+    byName.set(s.name.toLowerCase(), s);
+  }
+
+  function resolveConfigured(stateName: string, stateId: string): StatusOrderItem | undefined {
+    if (stateId && byId.has(stateId)) return byId.get(stateId);
+    return byName.get(stateName.toLowerCase());
+  }
+
+  const allSegments: StatusSegment[] = [];
   for (let i = 0; i < timeline.length; i++) {
     const entry = timeline[i];
     const nextTimestamp = i < timeline.length - 1 ? timeline[i + 1].timestamp : now;
     const durationMs = nextTimestamp - entry.timestamp;
+    if (durationMs <= 0) continue; // skip degenerate/duplicate-timestamp intervals
 
-    const nameKey = entry.stateName.toLowerCase();
-    const included = filterByStatusOrder
-      ? statusOrderNames.has(nameKey) || statusOrderIds.has(entry.stateId)
-      : true;
-
-    if (!included || durationMs <= 0) continue;
-
-    const color =
-      statusIdColorMap.get(entry.stateId) ?? statusColorMap.get(nameKey);
-
-    const existing = durationByStatus.get(entry.stateName);
-    if (existing) {
-      existing.durationMs += durationMs;
-    } else {
-      durationByStatus.set(entry.stateName, {
-        id: entry.stateId,
-        durationMs,
-        color,
-      });
-    }
+    const configured = resolveConfigured(entry.stateName, entry.stateId);
+    allSegments.push({
+      statusName: entry.stateName,
+      statusId: configured ? configured.id : (entry.stateId || ''),
+      durationDays: msToDays(durationMs),
+      color: configured?.color,
+      isUnconfigured: !configured,
+    });
   }
 
-  // Build segments in statusOrder order (or natural order if no statusOrder)
-  if (filterByStatusOrder) {
-    const segments: StatusSegment[] = [];
-    for (const orderItem of statusOrder) {
-      // Match by name (case-insensitive) or by id
-      let entry: { id: string; durationMs: number; color?: string } | undefined;
-      for (const [name, val] of durationByStatus.entries()) {
-        if (
-          name.toLowerCase() === orderItem.name.toLowerCase() ||
-          val.id === orderItem.id
-        ) {
-          entry = val;
-          break;
-        }
-      }
-      if (entry && entry.durationMs > 0) {
-        segments.push({
-          statusName: orderItem.name,
-          statusId: orderItem.id,
-          durationDays: msToDays(entry.durationMs),
-          color: entry.color ?? orderItem.color,
-        });
-      } else {
-        // Status in order but issue never visited it — add zero-duration segment
-        segments.push({
-          statusName: orderItem.name,
-          statusId: orderItem.id,
-          durationDays: 0,
-          color: orderItem.color,
-        });
-      }
-    }
-    return segments;
-  } else {
-    return Array.from(durationByStatus.entries()).map(([name, val]) => ({
-      statusName: name,
-      statusId: val.id,
-      durationDays: msToDays(val.durationMs),
-      color: val.color,
-    }));
+  // Trim so the timeline starts at the FIRST segment matching statusOrder[0]
+  // — same id-or-name criterion as findLeadTimeStartAt, so the Gantt bar and
+  // the lead-time/Estimated-Date anchor line up on the same "day 0".
+  const startIndex = allSegments.findIndex((seg) =>
+    matchesStatus(seg.statusName, seg.statusId, startStatus)
+  );
+
+  if (startIndex === -1) {
+    // Issue never entered statusOrder[0] — show the full history instead of
+    // an empty chart, but flag it so callers/renderers can indicate this.
+    return { segments: allSegments, neverReachedStartStatus: true };
   }
+  return { segments: allSegments.slice(startIndex), neverReachedStartStatus: false };
 }
 
 // ─── Raw State Timeline (for debug view) ─────────────────────────────────────
@@ -309,19 +303,10 @@ export function findLeadTimeStartAt(
   const startStatus = statusOrder[0];
   const timeline = parseStateTimeline(activities, issueCreatedAt);
 
-  // Match by id OR by name — NOT id-only-when-both-present. On a dashboard
-  // whose search spans multiple projects, the same-named state (e.g. "Dev
-  // of Arch") can have a DIFFERENT bundle element id per project, since
-  // state fields are typically configured per-project rather than shared.
-  // An id-exclusive comparison would then silently fail to match for every
-  // project except whichever one statusOrder[0].id happened to be sourced
-  // from in the configuration UI, falling back to issueCreatedAt for all
-  // the others. Name is the more reliable cross-project signal here, since
-  // that's what the user actually picked in the Status Order config.
-  const entry = timeline.find((e) =>
-    (e.stateId && startStatus.id && e.stateId === startStatus.id) ||
-    e.stateName.toLowerCase() === startStatus.name.toLowerCase()
-  );
+  // Match by id OR by name (see matchesStatus doc comment) — NOT
+  // id-only-when-both-present. Shared with parseStateSegments' start-trim
+  // logic so the Gantt timeline and this "day 0" anchor never disagree.
+  const entry = timeline.find((e) => matchesStatus(e.stateName, e.stateId, startStatus));
   return entry?.timestamp ?? issueCreatedAt;
 }
 
@@ -475,7 +460,7 @@ export function buildIssueChartData(
   showProjectedLT: boolean = false
 ): IssueChartData {
   const issueCreatedAt = issue.created ?? Date.now();
-  const segments = parseStateSegments(
+  const { segments, neverReachedStartStatus } = parseStateSegments(
     issue.id,
     activities,
     statusOrder,
@@ -514,6 +499,7 @@ export function buildIssueChartData(
     projectedLeadTimeDays,
     projectedLTDate,
     leadTimeStartAt,
+    neverReachedStartStatus,
   };
 }
 
