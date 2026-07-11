@@ -294,6 +294,26 @@ export function extractIssueTypeName(issue: Issue): string | undefined {
   if (Array.isArray(val)) return val[0]?.name;
   return (val as { name?: string } | null)?.name;
 }
+
+/**
+ * Reads an issue's current State field value (id + name), used as a fallback
+ * for issues that have never had a state-change activity — e.g. an issue
+ * created directly into a state (bulk import/seed data) rather than via a
+ * logged transition. Without this fallback, such an issue has no usable
+ * timeline at all and renders as an empty bar (confirmed on real data: DEMO-1,
+ * DEMO-8, both created straight into "Done" with zero recorded State
+ * activity). Mirrors issue-state-history/resources.ts's extractCurrentState.
+ */
+export function extractCurrentState(issue: Issue): { id: string; name: string } | undefined {
+  const stateField = issue.fields.find(
+    (f) => f.projectCustomField?.field?.fieldType?.valueType?.toLowerCase().includes('state')
+  );
+  if (!stateField) return undefined;
+  const val = stateField.value;
+  const single = Array.isArray(val) ? val[0] : val;
+  if (!single?.name) return undefined;
+  return { id: single.id ?? '', name: single.name };
+}
 // ─── Orchestrated Data Loading ────────────────────────────────────────────────
 
 /**
