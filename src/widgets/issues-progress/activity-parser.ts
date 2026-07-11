@@ -7,7 +7,7 @@ import {
   EstimateDateChange,
   StatusOrderItem,
 } from './types';
-import { extractIssueTypeName } from './resources';
+import { extractIssueTypeName, extractCurrentState } from './resources';
 
 // ─── State Timeline Entry ─────────────────────────────────────────────────────
 
@@ -132,9 +132,19 @@ export function parseStateSegments(
   issueId: string,
   activities: IssueActivityItem[],
   statusOrder: StatusOrderItem[],
-  issueCreatedAt: number
+  issueCreatedAt: number,
+  currentState?: { id: string; name: string }
 ): { segments: StatusSegment[]; neverReachedStartStatus: boolean } {
-  const timeline = parseStateTimeline(activities, issueCreatedAt);
+  let timeline = parseStateTimeline(activities, issueCreatedAt);
+
+  // Fallback: no state-change activity at all — the issue was created
+  // directly into a state (e.g. bulk import/seed data) rather than via a
+  // logged transition. Synthesize a single-entry timeline from its current
+  // State field value so it still gets a visible segment instead of an
+  // empty bar.
+  if (timeline.length === 0 && currentState) {
+    timeline = [{ timestamp: issueCreatedAt, stateName: currentState.name, stateId: currentState.id }];
+  }
 
   if (timeline.length === 0) {
     return { segments: [], neverReachedStartStatus: statusOrder.length > 0 };
@@ -464,7 +474,8 @@ export function buildIssueChartData(
     issue.id,
     activities,
     statusOrder,
-    issueCreatedAt
+    issueCreatedAt,
+    extractCurrentState(issue)
   );
 
   // Parse estimate date changes when needed by either flag
