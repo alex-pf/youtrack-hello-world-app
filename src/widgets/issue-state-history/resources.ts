@@ -138,6 +138,15 @@ export async function loadProjects(host: EmbeddableWidgetAPI): Promise<ProjectIn
  * project). Only the state-type custom field values are needed here — issue
  * type loading (used by issues-progress for LT settings) is out of scope for
  * this widget's configuration UI.
+ *
+ * Deduplicates by NAME (case-insensitive), not by bundle element id — state
+ * fields are typically configured per-project, so the same-named status
+ * (e.g. "To Do") usually has a DIFFERENT id in each project. Keying by id
+ * would list it once per project on a multi-project dashboard, producing a
+ * checkbox list with many visually-identical entries. The first project's
+ * id/color for a given name wins; downstream status matching
+ * (parseStateSegments et al.) already falls back to name when ids differ
+ * across projects, so a single representative id per name is sufficient.
  */
 export async function loadProjectStates(
   host: EmbeddableWidgetAPI,
@@ -162,8 +171,9 @@ export async function loadProjectStates(
 
       if (valueType.includes('state') && cf.bundle?.values) {
         for (const val of cf.bundle.values) {
-          if (!allStates.has(val.id)) {
-            allStates.set(val.id, {
+          const key = val.name.toLowerCase();
+          if (!allStates.has(key)) {
+            allStates.set(key, {
               id: val.id,
               name: val.name,
               color: val.color?.background,

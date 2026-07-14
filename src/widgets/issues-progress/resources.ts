@@ -142,6 +142,15 @@ export async function loadProjects(host: EmbeddableWidgetAPI): Promise<ProjectIn
 /**
  * Loads states and issue types for the given projects in parallel (one request
  * per project instead of 2N sequential requests).
+ *
+ * Both maps are keyed by NAME (case-insensitive), not by bundle element id —
+ * state/type fields are typically configured per-project, so the same-named
+ * value (e.g. "To Do") usually has a DIFFERENT id in each project. Keying by
+ * id would list it once per project on a multi-project dashboard, producing
+ * a checkbox list with many visually-identical entries. The first project's
+ * id/color for a given name wins; downstream matching (parseStateSegments,
+ * findLeadTimeStartAt) already falls back to name when ids differ, so a
+ * single representative id per name is sufficient.
  */
 export async function loadProjectCustomFields(
   host: EmbeddableWidgetAPI,
@@ -170,8 +179,9 @@ export async function loadProjectCustomFields(
       // State-type fields
       if (valueType.includes('state') && cf.bundle?.values) {
         for (const val of cf.bundle.values) {
-          if (!allStates.has(val.id)) {
-            allStates.set(val.id, {
+          const key = val.name.toLowerCase();
+          if (!allStates.has(key)) {
+            allStates.set(key, {
               id: val.id,
               name: val.name,
               color: val.color?.background,
@@ -187,8 +197,9 @@ export async function loadProjectCustomFields(
       const isTypeField = fieldName === 'type' || fieldLocalizedName === 'type';
       if (isTypeField && valueType.includes('enum') && cf.bundle?.values) {
         for (const val of cf.bundle.values) {
-          if (!allTypes.has(val.id)) {
-            allTypes.set(val.id, { id: val.id, name: val.name });
+          const key = val.name.toLowerCase();
+          if (!allTypes.has(key)) {
+            allTypes.set(key, { id: val.id, name: val.name });
           }
         }
       }
