@@ -68,7 +68,15 @@ activity-parser.ts  (buildChartData)
   │    statusOrder[0]. Statuses outside statusOrder are kept (not dropped)
   │    and flagged isUnconfigured — rendered gray. If statusOrder is empty,
   │    falls back to the legacy behavior: aggregate duration by status name,
-  │    no chronology, no gray segments.
+  │    no chronology, no gray segments. The timeline's hard end is
+  │    `issue.resolved` for resolved issues (Date.now() for open ones) —
+  │    any transition at or after that point is dropped entirely, so a
+  │    final status (Done/Declined/Closed/...) never renders and totalDays
+  │    reflects real lead time to completion, not open-ended growth. This
+  │    is driven by the `resolved` field, not by matching status names.
+  │    Falls back to synthesizing a single segment from the issue's current
+  │    State field (extractCurrentState) when there's no state-change
+  │    activity at all (e.g. bulk-imported/seed issues).
   ├─ findLeadTimeStartAt()  →  number (Unix ms) — same start-status match
   │    criterion as parseStateSegments (id OR name — see matchesStatus),
   │    so the segment timeline and the Estimated Date / Projected LT anchor
@@ -226,3 +234,5 @@ Sections in order:
 8. **Debug console noise** — `resources.ts` line 222 contains an unconditional `console.log('[DEBUG] activitiesPage raw response: ...')` and `gantt-chart.tsx` contains a `console.log('[PLT] ...')` both of which fire in production. These should be guarded by `debugMode` before shipping.
 
 9. **`host.storeConfig` field schema mismatch** — `widget-settings.json` does not declare `showProjectedLT`, `debugMode`, or `description`. This has no runtime impact (the host ignores undeclared fields) but the schema should be kept in sync.
+
+10. **A brief final-status sliver can still appear if `resolved` lags the actual status change** — segments are capped at `issue.resolved`, not at "whenever the issue entered a resolved-type status." If those two moments aren't simultaneous (e.g. workflow automation sets the state before the `resolved` timestamp is written), the gap between them still renders as a short segment. In practice this is usually near-zero and gets filtered by the `durationDays <= 0` render guard, but it's not a guaranteed zero.

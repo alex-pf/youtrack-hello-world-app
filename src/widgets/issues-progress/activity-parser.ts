@@ -133,7 +133,8 @@ export function parseStateSegments(
   activities: IssueActivityItem[],
   statusOrder: StatusOrderItem[],
   issueCreatedAt: number,
-  currentState?: { id: string; name: string }
+  currentState?: { id: string; name: string },
+  issueResolvedAt: number | null = null
 ): { segments: StatusSegment[]; neverReachedStartStatus: boolean } {
   let timeline = parseStateTimeline(activities, issueCreatedAt);
 
@@ -150,7 +151,16 @@ export function parseStateSegments(
     return { segments: [], neverReachedStartStatus: statusOrder.length > 0 };
   }
 
-  const now = Date.now();
+  // The timeline's hard end — resolution time for resolved issues, "now"
+  // for open ones. Using issue.resolved (a fact recorded once, on the
+  // issue) rather than matching status names like "Done"/"Declined"/
+  // "Closed" is deliberate: those names aren't configured anywhere and
+  // would need to be guessed/hardcoded, whereas resolved is authoritative
+  // and language-independent. Any timeline entry AT OR AFTER this point is
+  // dropped entirely — normally nothing should follow a resolved status,
+  // but activity can still get logged after resolution (e.g. a bulk edit),
+  // so this is a deliberate safety net, not just an optimization.
+  const nowOrResolved = issueResolvedAt ?? Date.now();
 
   if (statusOrder.length === 0) {
     // Preserve OLD behavior exactly: aggregate duration by status name,
@@ -160,8 +170,9 @@ export function parseStateSegments(
 
     for (let i = 0; i < timeline.length; i++) {
       const entry = timeline[i];
-      const nextTimestamp = i < timeline.length - 1 ? timeline[i + 1].timestamp : now;
-      const durationMs = nextTimestamp - entry.timestamp;
+      if (entry.timestamp >= nowOrResolved) break;
+      const rawNext = i < timeline.length - 1 ? timeline[i + 1].timestamp : nowOrResolved;
+      const durationMs = Math.min(rawNext, nowOrResolved) - entry.timestamp;
       if (durationMs <= 0) continue;
 
       const existing = durationByStatus.get(entry.stateName);
@@ -203,7 +214,12 @@ export function parseStateSegments(
   const allSegments: StatusSegment[] = [];
   for (let i = 0; i < timeline.length; i++) {
     const entry = timeline[i];
-    const nextTimestamp = i < timeline.length - 1 ? timeline[i + 1].timestamp : now;
+    // Nothing at or after the resolution moment should render — this is
+    // what keeps a final status (Done/Declined/Closed/...) off the chart,
+    // and what stops totalDays from growing forever once an issue closes.
+    if (entry.timestamp >= nowOrResolved) break;
+    const rawNext = i < timeline.length - 1 ? timeline[i + 1].timestamp : nowOrResolved;
+    const nextTimestamp = Math.min(rawNext, nowOrResolved);
     const durationMs = nextTimestamp - entry.timestamp;
     if (durationMs <= 0) continue; // skip degenerate/duplicate-timestamp intervals
 
@@ -475,7 +491,8 @@ export function buildIssueChartData(
     activities,
     statusOrder,
     issueCreatedAt,
-    extractCurrentState(issue)
+    extractCurrentState(issue),
+    issue.resolved
   );
 
   // Parse estimate date changes when needed by either flag
