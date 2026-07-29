@@ -1,0 +1,14 @@
+{
+  "title": "AI Summary Widget Settings",
+  "type": "object",
+  "properties": {
+    "search": {
+      "title": "Search query",
+      "type": "string"
+    },
+    "prompt": {
+      "title": "AI prompt",
+      "type": "string"
+    }
+  }
+}

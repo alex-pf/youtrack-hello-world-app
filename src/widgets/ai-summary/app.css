@@ -1,0 +1,45 @@
+.as-widget {
+  padding: 4px 16px;
+}
+
+.as-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.as-settings-btn {
+  margin-left: auto;
+}
+
+.as-center {
+  display: flex;
+  justify-content: center;
+  padding: 24px 16px;
+}
+
+.as-error {
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--ring-error-color);
+}
+
+.as-result {
+  overflow-y: auto;
+}
+
+.as-config {
+  padding: 4px 16px;
+}
+
+.as-config-field {
+  margin-bottom: 12px;
+}
+
+.as-config-label {
+  display: block;
+  margin-bottom: 4px;
+  font-weight: 600;
+  font-size: var(--ring-font-size-smaller);
+}
