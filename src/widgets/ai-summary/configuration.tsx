@@ -2,6 +2,7 @@ import React, {memo, useState} from 'react';
 import Input, {Size as InputSize} from '@jetbrains/ring-ui-built/components/input/input';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import ButtonSet from '@jetbrains/ring-ui-built/components/button-set/button-set';
+import Checkbox from '@jetbrains/ring-ui-built/components/checkbox/checkbox';
 import type {WidgetConfig} from './types';
 
 interface Props {
@@ -13,6 +14,7 @@ interface Props {
 const ConfigurationComponent: React.FC<Props> = ({config, onSave, onCancel}) => {
   const [search, setSearch] = useState(config?.search ?? '');
   const [prompt, setPrompt] = useState(config?.prompt ?? '');
+  const [debugMode, setDebugMode] = useState(config?.debugMode ?? false);
 
   const canSave = search.trim().length > 0 && prompt.trim().length > 0;
 
@@ -39,11 +41,19 @@ const ConfigurationComponent: React.FC<Props> = ({config, onSave, onCancel}) => 
         />
       </div>
 
+      <div className="as-config-field">
+        <Checkbox
+          label="Debug (показывать отладочную информацию)"
+          checked={debugMode}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDebugMode(e.target.checked)}
+        />
+      </div>
+
       <ButtonSet>
         <Button
           primary
           disabled={!canSave}
-          onClick={() => onSave({search: search.trim(), prompt: prompt.trim()})}
+          onClick={() => onSave({search: search.trim(), prompt: prompt.trim(), debugMode})}
         >
           Сохранить
         </Button>

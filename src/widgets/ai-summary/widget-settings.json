@@ -9,6 +9,9 @@
     "prompt": {
       "title": "AI prompt",
       "type": "string"
+    },
+    "debugMode": {
+      "type": "string"
     }
   }
 }
