@@ -43,3 +43,49 @@
   font-weight: 600;
   font-size: var(--ring-font-size-smaller);
 }
+
+/* ─── Debug Panel ─────────────────────────────────────────────────────────── */
+
+.as-debug {
+  margin-top: 16px;
+  padding: 12px 16px;
+  border-top: 2px solid var(--ring-warning-color, #c47900);
+  background: var(--ring-content-background-color);
+  font-size: var(--ring-font-size-smaller);
+  overflow-y: auto;
+  max-height: 400px;
+}
+
+.as-debug__title {
+  font-weight: 700;
+  font-size: var(--ring-font-size);
+  color: var(--ring-warning-color, #c47900);
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.as-debug__section {
+  margin-bottom: 12px;
+}
+
+.as-debug__section:last-child {
+  margin-bottom: 0;
+}
+
+.as-debug__label {
+  color: var(--ring-secondary-color);
+  margin-bottom: 4px;
+}
+
+.as-debug__pre {
+  margin: 0;
+  padding: 8px;
+  background: var(--ring-selected-background-color, rgba(128,128,128,0.15));
+  border-radius: 2px;
+  font-family: var(--ring-font-family-monospace, monospace);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow-y: auto;
+}
