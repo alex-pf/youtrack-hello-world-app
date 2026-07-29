@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "title": "AI Summary App Settings",
+  "description": "Global connection settings for the waibee AI service. Configured by a system administrator on the app's Settings tab, never exposed to the browser.",
+  "required": ["waibeeApiKey", "waibeeEndpoint"],
+  "properties": {
+    "waibeeEndpoint": {
+      "title": "waibee API base URL",
+      "type": "string",
+      "description": "Base URL of the waibee service, e.g. https://api.waibee.example.com (chat completions are requested at <baseUrl>/v1/chat/completions)",
+      "minLength": 1,
+      "x-scope": "GLOBAL"
+    },
+    "waibeeApiKey": {
+      "title": "waibee API key",
+      "type": "string",
+      "format": "secret",
+      "description": "Secret API key used to authenticate requests to waibee. Only readable from backend scripts via ctx.settings.waibeeApiKey.",
+      "minLength": 1,
+      "x-scope": "GLOBAL"
+    },
+    "waibeeModel": {
+      "title": "waibee model",
+      "type": "string",
+      "description": "Model name to send in the chat completion request.",
+      "default": "waibee-1",
+      "x-scope": "GLOBAL"
+    }
+  }
+}

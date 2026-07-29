@@ -53,6 +53,16 @@
       "extensionPoint": "DASHBOARD_WIDGET",
       "settingsSchemaPath": "issue-state-history/widget-settings.json",
       "permissions": ["READ_ISSUE"]
+    },
+    {
+      "key": "ai-summary-widget",
+      "name": "AI Summary",
+      "description": "Summarizes issues matching a saved filter using the waibee AI service",
+      "iconPath": "ai-summary/widget-icon.svg",
+      "indexPath": "ai-summary/index.html",
+      "extensionPoint": "DASHBOARD_WIDGET",
+      "settingsSchemaPath": "ai-summary/widget-settings.json",
+      "permissions": ["READ_ISSUE"]
     }
   ]
 }
