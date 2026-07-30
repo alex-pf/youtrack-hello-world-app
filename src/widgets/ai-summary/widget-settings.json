@@ -10,6 +10,14 @@
       "title": "AI prompt",
       "type": "string"
     },
+    "title": {
+      "title": "Widget title",
+      "type": "string"
+    },
+    "description": {
+      "title": "Description",
+      "type": "string"
+    },
     "debugMode": {
       "type": "string"
     }

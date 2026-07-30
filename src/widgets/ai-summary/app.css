@@ -34,11 +34,19 @@ html, body, #root {
   color: var(--ring-error-color);
 }
 
-.as-result {
+.as-scroll {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   overflow-x: auto;
+}
+
+.as-description {
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--ring-line-color);
+  color: var(--ring-secondary-color);
+  white-space: pre-wrap;
 }
 
 .as-result p {

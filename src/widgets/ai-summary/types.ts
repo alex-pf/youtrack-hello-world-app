@@ -1,6 +1,8 @@
 export interface WidgetConfig {
   search: string;
   prompt: string;
+  title?: string;
+  description?: string;
   debugMode: boolean;
 }
 
@@ -8,6 +10,8 @@ export interface WidgetConfig {
 export interface StoredWidgetConfig {
   search: string;
   prompt: string;
+  title?: string;
+  description?: string;
   debugMode?: string;
 }
 
@@ -16,6 +20,8 @@ export function parseStoredConfig(stored: StoredWidgetConfig | null): WidgetConf
   return {
     search: stored.search,
     prompt: stored.prompt,
+    title: stored.title,
+    description: stored.description,
     debugMode: stored.debugMode === 'true'
   };
 }
@@ -24,6 +30,8 @@ export function serializeConfig(config: WidgetConfig): StoredWidgetConfig {
   return {
     search: config.search,
     prompt: config.prompt,
+    title: config.title,
+    description: config.description,
     debugMode: String(config.debugMode)
   };
 }

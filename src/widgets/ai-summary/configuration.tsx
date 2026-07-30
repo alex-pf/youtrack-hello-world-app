@@ -12,14 +12,25 @@ interface Props {
 }
 
 const ConfigurationComponent: React.FC<Props> = ({config, onSave, onCancel}) => {
+  const [title, setTitle] = useState(config?.title ?? '');
   const [search, setSearch] = useState(config?.search ?? '');
   const [prompt, setPrompt] = useState(config?.prompt ?? '');
+  const [description, setDescription] = useState(config?.description ?? '');
   const [debugMode, setDebugMode] = useState(config?.debugMode ?? false);
 
   const canSave = search.trim().length > 0 && prompt.trim().length > 0;
 
   return (
     <div className="as-config">
+      <div className="as-config-field">
+        <Input
+          label="Заголовок (опционально)"
+          size={InputSize.FULL}
+          value={title}
+          onChange={e => setTitle(e.target.value)}
+        />
+      </div>
+
       <div className="as-config-field">
         <label className="as-config-label">Фильтр YouTrack (query)</label>
         <Input
@@ -42,6 +53,17 @@ const ConfigurationComponent: React.FC<Props> = ({config, onSave, onCancel}) => 
       </div>
 
       <div className="as-config-field">
+        <label className="as-config-label">Описание (опционально)</label>
+        <Input
+          multiline
+          size={InputSize.FULL}
+          value={description}
+          placeholder="Показывается над результатом"
+          onChange={e => setDescription(e.target.value)}
+        />
+      </div>
+
+      <div className="as-config-field">
         <Checkbox
           label="Debug (показывать отладочную информацию)"
           checked={debugMode}
@@ -53,7 +75,13 @@ const ConfigurationComponent: React.FC<Props> = ({config, onSave, onCancel}) => 
         <Button
           primary
           disabled={!canSave}
-          onClick={() => onSave({search: search.trim(), prompt: prompt.trim(), debugMode})}
+          onClick={() => onSave({
+            search: search.trim(),
+            prompt: prompt.trim(),
+            title: title.trim() || undefined,
+            description: description.trim() || undefined,
+            debugMode
+          })}
         >
           Сохранить
         </Button>

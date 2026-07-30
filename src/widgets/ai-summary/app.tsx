@@ -42,7 +42,7 @@ const AppComponent: React.FC<AppProps> = ({host}) => {
         setIsConfiguring(true);
       } else {
         setConfig(savedConfig);
-        host.setTitle('AI Summary', '');
+        host.setTitle(savedConfig.title || 'AI Summary', '');
       }
       setIsReady(true);
     }
@@ -64,7 +64,7 @@ const AppComponent: React.FC<AppProps> = ({host}) => {
     setMarkdown('');
     setError(null);
     setDebugInfo(null);
-    host.setTitle('AI Summary', '');
+    host.setTitle(newConfig.title || 'AI Summary', '');
     await host.storeConfig(serializeConfig(newConfig));
   }, [host]);
 
@@ -176,60 +176,66 @@ const AppComponent: React.FC<AppProps> = ({host}) => {
         </Button>
       </div>
 
-      {isLoading && (
-        <div className="as-center">
-          <LoaderInline />
-        </div>
-      )}
+      <div className="as-scroll">
+        {config?.description && (
+          <div className="as-description">{config.description}</div>
+        )}
 
-      {error && <div className="as-error">{error}</div>}
-
-      {!isLoading && !error && markdown && (
-        <div
-          className="as-result ring-heading-contentWithHeadings ring-link-withLinks"
-          dangerouslySetInnerHTML={{__html: markdownHtml}}
-        />
-      )}
-
-      {debugInfo && (
-        <div className="as-debug">
-          <div className="as-debug__title">Debug</div>
-
-          <div className="as-debug__section">
-            <div className="as-debug__label">Фильтр</div>
-            <code>{debugInfo.search}</code>
+        {isLoading && (
+          <div className="as-center">
+            <LoaderInline />
           </div>
+        )}
 
-          <div className="as-debug__section">
-            <div className="as-debug__label">Промпт</div>
-            <code>{debugInfo.prompt}</code>
-          </div>
+        {error && <div className="as-error">{error}</div>}
 
-          <div className="as-debug__section">
-            <div className="as-debug__label">Задач загружено: {debugInfo.issuesCount}</div>
-            <pre className="as-debug__pre">{JSON.stringify(debugInfo.issues, null, 2)}</pre>
-          </div>
+        {!isLoading && !error && markdown && (
+          <div
+            className="as-result ring-heading-contentWithHeadings ring-link-withLinks"
+            dangerouslySetInnerHTML={{__html: markdownHtml}}
+          />
+        )}
 
-          <div className="as-debug__section">
-            <div className="as-debug__label">Запрос к ask-ai/ask</div>
-            <pre className="as-debug__pre">{JSON.stringify(debugInfo.requestBody, null, 2)}</pre>
-          </div>
+        {debugInfo && (
+          <div className="as-debug">
+            <div className="as-debug__title">Debug</div>
 
-          {debugInfo.rawResponse !== null && (
             <div className="as-debug__section">
-              <div className="as-debug__label">Ответ backend</div>
-              <pre className="as-debug__pre">{JSON.stringify(debugInfo.rawResponse, null, 2)}</pre>
+              <div className="as-debug__label">Фильтр</div>
+              <code>{debugInfo.search}</code>
             </div>
-          )}
 
-          {debugInfo.rawError !== null && (
             <div className="as-debug__section">
-              <div className="as-debug__label">Ошибка (сырые данные)</div>
-              <pre className="as-debug__pre">{debugInfo.rawError}</pre>
+              <div className="as-debug__label">Промпт</div>
+              <code>{debugInfo.prompt}</code>
             </div>
-          )}
-        </div>
-      )}
+
+            <div className="as-debug__section">
+              <div className="as-debug__label">Задач загружено: {debugInfo.issuesCount}</div>
+              <pre className="as-debug__pre">{JSON.stringify(debugInfo.issues, null, 2)}</pre>
+            </div>
+
+            <div className="as-debug__section">
+              <div className="as-debug__label">Запрос к ask-ai/ask</div>
+              <pre className="as-debug__pre">{JSON.stringify(debugInfo.requestBody, null, 2)}</pre>
+            </div>
+
+            {debugInfo.rawResponse !== null && (
+              <div className="as-debug__section">
+                <div className="as-debug__label">Ответ backend</div>
+                <pre className="as-debug__pre">{JSON.stringify(debugInfo.rawResponse, null, 2)}</pre>
+              </div>
+            )}
+
+            {debugInfo.rawError !== null && (
+              <div className="as-debug__section">
+                <div className="as-debug__label">Ошибка (сырые данные)</div>
+                <pre className="as-debug__pre">{debugInfo.rawError}</pre>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 };
