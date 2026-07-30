@@ -1,8 +1,17 @@
+html, body, #root {
+  height: 100%;
+}
+
 .as-widget {
+  height: 100%;
+  box-sizing: border-box;
   padding: 4px 16px;
+  display: flex;
+  flex-direction: column;
 }
 
 .as-toolbar {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -26,7 +35,10 @@
 }
 
 .as-result {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
+  overflow-x: auto;
 }
 
 .as-result p {
