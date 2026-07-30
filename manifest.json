@@ -15,16 +15,6 @@
   },
   "widgets": [
     {
-      "key": "hello-world-widget",
-      "name": "Detailed Issues List",
-      "description": "Displays a list of YouTrack issues matching a search query",
-      "iconPath": "hello-world/widget-icon.svg",
-      "indexPath": "hello-world/index.html",
-      "extensionPoint": "DASHBOARD_WIDGET",
-      "settingsSchemaPath": "hello-world/widget-settings.json",
-      "permissions": ["READ_ISSUE"]
-    },
-    {
       "key": "issues-table-widget",
       "name": "Issues Table",
       "description": "Displays a table of YouTrack issues matching a search query",
