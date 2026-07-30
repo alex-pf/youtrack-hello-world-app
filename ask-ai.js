@@ -2,7 +2,8 @@ const http = require('@jetbrains/youtrack-scripting-api/http');
 
 // waibee exposes an OpenAI-compatible chat completions endpoint.
 const WAIBEE_PATH = '/v1/chat/completions';
-const DEFAULT_MODEL = 'waibee-1';
+// waibee requires model ids in "<provider>/<model>" form; "waibee/auto" picks one.
+const DEFAULT_MODEL = 'waibee/auto';
 
 function formatIssuesForPrompt(issues) {
   return issues.map(function (issue) {
@@ -66,9 +67,14 @@ exports.httpHandler = {
           return;
         }
 
-        const connection = new http.Connection(endpoint);
+        // A trailing slash in the setting would produce "host//v1/..." — some
+        // proxies 404 on the double slash, so normalize it away.
+        const connection = new http.Connection(String(endpoint).replace(/\/+$/, ''));
         connection.addHeader('Content-Type', 'application/json');
-        connection.addHeader('Authorization', 'Bearer ' + apiKey);
+        // Secret settings arrive as an opaque reference whose toString() is a
+        // mask ("*****"), so building the header by hand sends the mask and
+        // gets a 401. bearerAuth resolves the real secret inside the runtime.
+        connection.bearerAuth(apiKey);
 
         const response = connection.postSync(
           WAIBEE_PATH,

@@ -23,8 +23,8 @@
     "waibeeModel": {
       "title": "waibee model",
       "type": "string",
-      "description": "Model name to send in the chat completion request.",
-      "default": "waibee-1",
+      "description": "Model id to send in the chat completion request, in \"<provider>/<model>\" form (e.g. waibee/auto, anthropic/claude-opus-5). See <baseUrl>/v1/models for the full list.",
+      "default": "waibee/auto",
       "x-scope": "GLOBAL"
     }
   }
