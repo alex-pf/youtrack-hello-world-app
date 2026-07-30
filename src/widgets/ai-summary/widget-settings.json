@@ -18,6 +18,9 @@
       "title": "Description",
       "type": "string"
     },
+    "includeComments": {
+      "type": "string"
+    },
     "debugMode": {
       "type": "string"
     }

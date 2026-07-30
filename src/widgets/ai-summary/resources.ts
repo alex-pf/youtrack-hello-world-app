@@ -1,9 +1,16 @@
 import type {EmbeddableWidgetAPI} from '../../../@types/globals';
-import type {Issue, AskAiResponse} from './types';
+import type {
+  Issue,
+  AskAiResponse,
+  IssueActivityItem,
+  ActivityPage,
+  ActivityValue,
+  HistoryDigest
+} from './types';
 
 const ISSUE_FIELD_VALUE_FIELDS = 'name,login,fullName,presentation';
 const ISSUE_FIELD_FIELDS = `value(${ISSUE_FIELD_VALUE_FIELDS}),projectCustomField(field(name,localizedName))`;
-const ISSUE_FIELDS = `idReadable,summary,description,fields(${ISSUE_FIELD_FIELDS})`;
+const ISSUE_FIELDS = `id,idReadable,summary,description,fields(${ISSUE_FIELD_FIELDS})`;
 
 const ISSUES_LIMIT = 50;
 
@@ -23,11 +30,12 @@ export async function loadIssues(
 export async function askAi(
   host: EmbeddableWidgetAPI,
   issues: Issue[],
-  prompt: string
+  prompt: string,
+  history: HistoryDigest
 ): Promise<AskAiResponse> {
   return await host.fetchApp<AskAiResponse>('ask-ai/ask', {
     method: 'POST',
-    body: {issues, prompt}
+    body: {issues, prompt, history}
   });
 }
 
@@ -71,4 +79,143 @@ export function dumpError(e: unknown): string {
   } catch {
     return String(e);
   }
+}
+
+// ─── Issue history ───────────────────────────────────────────────────────────
+//
+// Design note: rather than shipping raw activity JSON to waibee (expensive in
+// tokens and full of noise — author ids, raw category types, unrelated
+// fields), activities are compacted client-side into a short chronological
+// digest per issue (see buildHistoryDigest). This keeps the prompt small and
+// deterministic regardless of how verbose an issue's history is.
+
+const ACTIVITY_ITEM_FIELDS =
+  'timestamp,author(login,fullName,name),category(id),field(name,localizedName),' +
+  'added(name,presentation,login,fullName,text,value),' +
+  'removed(name,presentation,login,fullName,text,value)';
+const ACTIVITY_FIELDS = `activities(${ACTIVITY_ITEM_FIELDS}),cursor,hasAfter`;
+const ACTIVITIES_PAGE_SIZE = 1000;
+
+// CustomFieldCategory/IssueResolvedCategory cover state & field transitions;
+// CommentsCategory is opt-in via the "Включить комментарии" setting since
+// comment threads can be long and aren't always relevant to the prompt.
+const ACTIVITY_CATEGORIES_BASE = 'CustomFieldCategory,IssueResolvedCategory';
+const ACTIVITY_CATEGORIES_WITH_COMMENTS = `${ACTIVITY_CATEGORIES_BASE},CommentsCategory`;
+
+// How many issues' activity histories to fetch in parallel. High enough to
+// meaningfully cut wall-clock time vs. the fully-sequential approach used by
+// the issue-state-history widget, low enough to stay gentle on YouTrack's
+// rate limits for a user-triggered ("Обновить" click) request.
+const HISTORY_CONCURRENCY = 5;
+const HISTORY_COMMENT_SNIPPET_LENGTH = 200;
+
+async function loadIssueActivities(
+  host: EmbeddableWidgetAPI,
+  issueId: string,
+  categories: string
+): Promise<IssueActivityItem[]> {
+  const page = await host.fetchYouTrack<ActivityPage>(`issues/${issueId}/activitiesPage`, {
+    query: {
+      fields: ACTIVITY_FIELDS,
+      categories,
+      $top: String(ACTIVITIES_PAGE_SIZE)
+    }
+  });
+  return page?.activities ?? [];
+}
+
+function formatActivityValue(value: ActivityValue | ActivityValue[] | null | undefined): string {
+  if (value == null) return '—';
+  if (Array.isArray(value)) {
+    return value.length ? value.map(formatActivityValue).join(', ') : '—';
+  }
+  return value.presentation
+    || value.fullName
+    || value.name
+    || value.login
+    || value.text
+    || (value.value != null ? String(value.value) : '')
+    || '—';
+}
+
+function formatActivityDate(timestampMs: number): string {
+  return new Date(timestampMs).toISOString().slice(0, 10);
+}
+
+function formatAuthor(activity: IssueActivityItem): string {
+  return activity.author?.fullName || activity.author?.name || activity.author?.login || 'unknown';
+}
+
+/** Turns raw activities into a compact chronological text digest for the AI prompt. */
+export function buildHistoryDigest(activities: IssueActivityItem[]): string {
+  const lines = [...activities]
+    .sort((a, b) => a.timestamp - b.timestamp)
+    .map(activity => {
+      const date = formatActivityDate(activity.timestamp);
+      const author = formatAuthor(activity);
+
+      if (activity.category?.id === 'CommentsCategory') {
+        const added = Array.isArray(activity.added) ? activity.added[0] : activity.added;
+        const text = added?.text;
+        if (!text) return null;
+        const snippet = text.length > HISTORY_COMMENT_SNIPPET_LENGTH
+          ? text.slice(0, HISTORY_COMMENT_SNIPPET_LENGTH) + '…'
+          : text;
+        return `${date} комментарий (${author}): ${snippet}`;
+      }
+
+      const field = activity.field?.localizedName
+        || activity.field?.name
+        || (activity.category?.id === 'IssueResolvedCategory' ? 'Resolved' : null);
+      if (!field) return null;
+
+      const from = formatActivityValue(activity.removed);
+      const to = formatActivityValue(activity.added);
+      return `${date} ${field}: ${from} → ${to} (${author})`;
+    })
+    .filter((line): line is string => Boolean(line));
+
+  return lines.length ? lines.join('\n') : '(история изменений отсутствует)';
+}
+
+/** Runs `fn` over `items` with at most `limit` calls in flight at once. */
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    for (;;) {
+      const i = nextIndex++;
+      if (i >= items.length) return;
+      results[i] = await fn(items[i]);
+    }
+  }
+
+  await Promise.all(
+    Array.from({length: Math.min(limit, items.length)}, worker)
+  );
+  return results;
+}
+
+export async function loadIssuesHistory(
+  host: EmbeddableWidgetAPI,
+  issues: Issue[],
+  includeComments: boolean
+): Promise<HistoryDigest> {
+  const categories = includeComments ? ACTIVITY_CATEGORIES_WITH_COMMENTS : ACTIVITY_CATEGORIES_BASE;
+
+  const entries = await mapWithConcurrency(issues, HISTORY_CONCURRENCY, async (issue) => {
+    try {
+      const activities = await loadIssueActivities(host, issue.id, categories);
+      return [issue.idReadable, buildHistoryDigest(activities)] as const;
+    } catch (e) {
+      return [issue.idReadable, `(не удалось загрузить историю: ${describeError(e)})`] as const;
+    }
+  });
+
+  return Object.fromEntries(entries);
 }

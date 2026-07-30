@@ -16,6 +16,7 @@ const ConfigurationComponent: React.FC<Props> = ({config, onSave, onCancel}) => 
   const [search, setSearch] = useState(config?.search ?? '');
   const [prompt, setPrompt] = useState(config?.prompt ?? '');
   const [description, setDescription] = useState(config?.description ?? '');
+  const [includeComments, setIncludeComments] = useState(config?.includeComments ?? false);
   const [debugMode, setDebugMode] = useState(config?.debugMode ?? false);
 
   const canSave = search.trim().length > 0 && prompt.trim().length > 0;
@@ -65,6 +66,14 @@ const ConfigurationComponent: React.FC<Props> = ({config, onSave, onCancel}) => 
 
       <div className="as-config-field">
         <Checkbox
+          label="Включить комментарии в историю задач"
+          checked={includeComments}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setIncludeComments(e.target.checked)}
+        />
+      </div>
+
+      <div className="as-config-field">
+        <Checkbox
           label="Debug (показывать отладочную информацию)"
           checked={debugMode}
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDebugMode(e.target.checked)}
@@ -80,6 +89,7 @@ const ConfigurationComponent: React.FC<Props> = ({config, onSave, onCancel}) => 
             prompt: prompt.trim(),
             title: title.trim() || undefined,
             description: description.trim() || undefined,
+            includeComments,
             debugMode
           })}
         >

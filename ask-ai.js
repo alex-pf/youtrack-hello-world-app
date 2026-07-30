@@ -5,7 +5,8 @@ const WAIBEE_PATH = '/v1/chat/completions';
 // waibee requires model ids in "<provider>/<model>" form; "waibee/auto" picks one.
 const DEFAULT_MODEL = 'waibee/auto';
 
-function formatIssuesForPrompt(issues) {
+function formatIssuesForPrompt(issues, history) {
+  history = history || {};
   return issues.map(function (issue) {
     const fields = (issue.fields || [])
       .map(function (f) {
@@ -19,18 +20,20 @@ function formatIssuesForPrompt(issues) {
       })
       .filter(Boolean)
       .join(', ');
+    const historyText = history[issue.idReadable];
     return '### ' + issue.idReadable + ' ' + issue.summary +
       (fields ? '\n' + fields : '') +
-      (issue.description ? '\n' + issue.description : '');
+      (issue.description ? '\n' + issue.description : '') +
+      (historyText ? '\nИстория:\n' + historyText : '');
   }).join('\n\n');
 }
 
-function buildWaibeeRequestBody(issues, prompt, model) {
+function buildWaibeeRequestBody(issues, prompt, model, history) {
   return JSON.stringify({
     model: model || DEFAULT_MODEL,
     messages: [
       { role: 'system', content: prompt },
-      { role: 'user', content: formatIssuesForPrompt(issues) }
+      { role: 'user', content: formatIssuesForPrompt(issues, history) }
     ]
   });
 }
@@ -51,6 +54,7 @@ exports.httpHandler = {
         const body = ctx.request.json();
         const issues = body.issues || [];
         const prompt = body.prompt || '';
+        const history = body.history || {};
 
         if (!prompt) {
           ctx.response.code = 400;
@@ -79,7 +83,7 @@ exports.httpHandler = {
         const response = connection.postSync(
           WAIBEE_PATH,
           null,
-          buildWaibeeRequestBody(issues, prompt, ctx.settings.waibeeModel)
+          buildWaibeeRequestBody(issues, prompt, ctx.settings.waibeeModel, history)
         );
 
         if (!response.isSuccess) {

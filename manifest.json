@@ -52,7 +52,7 @@
       "indexPath": "ai-summary/index.html",
       "extensionPoint": "DASHBOARD_WIDGET",
       "settingsSchemaPath": "ai-summary/widget-settings.json",
-      "permissions": ["READ_ISSUE"]
+      "permissions": ["READ_ISSUE", "READ_COMMENT"]
     }
   ]
 }

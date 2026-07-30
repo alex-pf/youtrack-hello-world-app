@@ -4,9 +4,9 @@ import DOMPurify from 'dompurify';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import LoaderInline from '@jetbrains/ring-ui-built/components/loader-inline/loader-inline';
 import type {EmbeddableWidgetAPI} from '../../../@types/globals';
-import type {WidgetConfig, StoredWidgetConfig, Issue} from './types';
+import type {WidgetConfig, StoredWidgetConfig, Issue, HistoryDigest} from './types';
 import {parseStoredConfig, serializeConfig} from './types';
-import {loadIssues, askAi, describeError, dumpError} from './resources';
+import {loadIssues, loadIssuesHistory, askAi, describeError, dumpError} from './resources';
 import {Configuration} from './configuration';
 import './app.css';
 
@@ -19,6 +19,7 @@ interface DebugInfo {
   prompt: string;
   issuesCount: number;
   issues: Issue[];
+  history: HistoryDigest;
   requestBody: unknown;
   rawResponse: unknown;
   rawError: string | null;
@@ -29,6 +30,7 @@ const AppComponent: React.FC<AppProps> = ({host}) => {
   const [config, setConfig] = useState<WidgetConfig | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingPhase, setLoadingPhase] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [markdown, setMarkdown] = useState('');
   const [debugInfo, setDebugInfo] = useState<DebugInfo | null>(null);
@@ -85,13 +87,19 @@ const AppComponent: React.FC<AppProps> = ({host}) => {
     host.setLoadingAnimationEnabled(true);
 
     let issues: Issue[] = [];
+    let history: HistoryDigest = {};
     const requestBody = {prompt: config.prompt} as {prompt: string; issuesCount?: number};
 
     try {
+      setLoadingPhase('Загрузка задач...');
       issues = await loadIssues(host, config.search);
       requestBody.issuesCount = issues.length;
 
-      const response = await askAi(host, issues, config.prompt);
+      setLoadingPhase(`Загрузка истории задач (${issues.length})...`);
+      history = await loadIssuesHistory(host, issues, config.includeComments);
+
+      setLoadingPhase('Запрос к AI...');
+      const response = await askAi(host, issues, config.prompt, history);
 
       if (response.error) {
         throw new Error(response.error);
@@ -105,6 +113,7 @@ const AppComponent: React.FC<AppProps> = ({host}) => {
           prompt: config.prompt,
           issuesCount: issues.length,
           issues,
+          history,
           requestBody,
           rawResponse: response,
           rawError: null
@@ -123,6 +132,7 @@ const AppComponent: React.FC<AppProps> = ({host}) => {
           prompt: config.prompt,
           issuesCount: issues.length,
           issues,
+          history,
           requestBody,
           rawResponse: null,
           rawError: dumpError(e)
@@ -132,6 +142,7 @@ const AppComponent: React.FC<AppProps> = ({host}) => {
       }
     } finally {
       setIsLoading(false);
+      setLoadingPhase('');
       host.setLoadingAnimationEnabled(false);
     }
   }, [config, host]);
@@ -182,8 +193,9 @@ const AppComponent: React.FC<AppProps> = ({host}) => {
         )}
 
         {isLoading && (
-          <div className="as-center">
+          <div className="as-center as-center--column">
             <LoaderInline />
+            {loadingPhase && <div className="as-loading-phase">{loadingPhase}</div>}
           </div>
         )}
 
@@ -213,6 +225,11 @@ const AppComponent: React.FC<AppProps> = ({host}) => {
             <div className="as-debug__section">
               <div className="as-debug__label">Задач загружено: {debugInfo.issuesCount}</div>
               <pre className="as-debug__pre">{JSON.stringify(debugInfo.issues, null, 2)}</pre>
+            </div>
+
+            <div className="as-debug__section">
+              <div className="as-debug__label">История задач (сжатый дайджест, отправляется в waibee)</div>
+              <pre className="as-debug__pre">{JSON.stringify(debugInfo.history, null, 2)}</pre>
             </div>
 
             <div className="as-debug__section">
