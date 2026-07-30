@@ -29,6 +29,36 @@
   overflow-y: auto;
 }
 
+.as-result p {
+  margin: 0 0 8px;
+}
+
+.as-result table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-bottom: 12px;
+}
+
+.as-result th,
+.as-result td {
+  border: 1px solid var(--ring-borders-color);
+  padding: 4px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.as-result th {
+  background: var(--ring-sidebar-background-color, rgba(128,128,128,0.08));
+  font-weight: 600;
+}
+
+.as-result code {
+  font-family: var(--ring-font-family-monospace, monospace);
+  background: var(--ring-selected-background-color, rgba(128,128,128,0.15));
+  padding: 0 3px;
+  border-radius: 2px;
+}
+
 .as-config {
   padding: 4px 16px;
 }

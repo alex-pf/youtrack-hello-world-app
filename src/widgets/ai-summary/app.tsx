@@ -1,7 +1,8 @@
-import React, {memo, useCallback, useEffect, useState} from 'react';
+import React, {memo, useCallback, useEffect, useMemo, useState} from 'react';
+import {marked} from 'marked';
+import DOMPurify from 'dompurify';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import LoaderInline from '@jetbrains/ring-ui-built/components/loader-inline/loader-inline';
-import Markdown from '@jetbrains/ring-ui-built/components/markdown/markdown';
 import type {EmbeddableWidgetAPI} from '../../../@types/globals';
 import type {WidgetConfig, StoredWidgetConfig, Issue} from './types';
 import {parseStoredConfig, serializeConfig} from './types';
@@ -135,6 +136,11 @@ const AppComponent: React.FC<AppProps> = ({host}) => {
     }
   }, [config, host]);
 
+  const markdownHtml = useMemo(
+    () => markdown ? DOMPurify.sanitize(marked(markdown) as string) : '',
+    [markdown]
+  );
+
   if (isConfiguring) {
     return (
       <Configuration
@@ -179,9 +185,10 @@ const AppComponent: React.FC<AppProps> = ({host}) => {
       {error && <div className="as-error">{error}</div>}
 
       {!isLoading && !error && markdown && (
-        <div className="as-result">
-          <Markdown>{markdown}</Markdown>
-        </div>
+        <div
+          className="as-result ring-heading-contentWithHeadings ring-link-withLinks"
+          dangerouslySetInnerHTML={{__html: markdownHtml}}
+        />
       )}
 
       {debugInfo && (
