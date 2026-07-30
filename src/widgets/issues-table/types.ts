@@ -7,6 +7,7 @@ export interface FieldColumnConfig {
 export interface WidgetConfig {
   search: string;
   title?: string;
+  description?: string;
   visibleFields?: FieldColumnConfig[];
   refreshInterval?: number; // minutes (0 = disabled)
 }
@@ -15,6 +16,7 @@ export interface WidgetConfig {
 export interface StoredWidgetConfig {
   search: string;
   title?: string;
+  description?: string;
   visibleFields?: string;
   refreshInterval?: number;
 }
@@ -32,6 +34,7 @@ export function parseStoredConfig(stored: StoredWidgetConfig | null): WidgetConf
   return {
     search: stored.search,
     title: stored.title,
+    description: stored.description,
     visibleFields: fields,
     refreshInterval: stored.refreshInterval,
   };
@@ -41,6 +44,7 @@ export function serializeConfig(config: WidgetConfig): StoredWidgetConfig {
   return {
     search: config.search,
     title: config.title,
+    description: config.description,
     visibleFields: config.visibleFields ? JSON.stringify(config.visibleFields) : undefined,
     refreshInterval: config.refreshInterval,
   };

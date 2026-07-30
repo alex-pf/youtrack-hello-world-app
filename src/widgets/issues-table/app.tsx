@@ -215,6 +215,7 @@ const AppComponent: React.FC<AppProps> = ({host}) => {
       <IssuesTable
         issues={issues}
         baseUrl={baseUrl}
+        description={config?.description}
         visibleFields={config?.visibleFields}
       />
 

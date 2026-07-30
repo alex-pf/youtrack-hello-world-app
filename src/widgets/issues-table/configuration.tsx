@@ -50,6 +50,7 @@ const REFRESH_OPTIONS: SelectItem[] = [
 const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel}) => {
   const [search, setSearch] = useState(config?.search ?? '');
   const [title, setTitle] = useState(config?.title ?? '');
+  const [description, setDescription] = useState(config?.description ?? '');
   const [refreshInterval, setRefreshInterval] = useState(config?.refreshInterval ?? 0);
   const [selectedFields, setSelectedFields] = useState<FieldColumnConfig[]>(
     config?.visibleFields ?? []
@@ -112,6 +113,7 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
     onSave({
       search: search.trim(),
       title: title.trim() || undefined,
+      description: description.trim() || undefined,
       visibleFields: selectedFields.length > 0 ? selectedFields : undefined,
       refreshInterval: refreshInterval || undefined,
     });
@@ -169,6 +171,19 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
         value={title}
         onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTitle(e.target.value)}
       />
+
+      <div style={{marginTop: 8, marginBottom: 4}}>
+        <span style={{fontSize: 12, color: 'var(--ring-secondary-color)', display: 'block', marginBottom: 4}}>
+          Описание (опционально)
+        </span>
+        <Input
+          multiline
+          size={InputSize.FULL}
+          value={description}
+          placeholder="Показывается над таблицей"
+          onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setDescription(e.target.value)}
+        />
+      </div>
 
       <div style={{marginTop: 8, marginBottom: 4}}>
         <span style={{fontSize: 12, color: 'var(--ring-secondary-color)', display: 'block', marginBottom: 4}}>

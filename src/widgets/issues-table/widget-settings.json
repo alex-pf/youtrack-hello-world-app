@@ -10,6 +10,10 @@
       "title": "Widget title",
       "type": "string"
     },
+    "description": {
+      "title": "Description",
+      "type": "string"
+    },
     "visibleFields": {
       "title": "Visible fields (JSON)",
       "type": "string"

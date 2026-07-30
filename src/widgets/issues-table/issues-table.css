@@ -5,6 +5,14 @@
   overflow: auto;
 }
 
+.it-description {
+  padding: 8px 0;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--ring-line-color);
+  color: var(--ring-secondary-color);
+  white-space: pre-wrap;
+}
+
 .it-table {
   width: 100%;
   border-collapse: collapse;

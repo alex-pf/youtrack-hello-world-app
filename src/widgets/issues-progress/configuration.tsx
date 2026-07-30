@@ -5,7 +5,7 @@ function usePrevious<T>(value: T): T | undefined {
   useEffect(() => { ref.current = value; });
   return ref.current;
 }
-import {Size as InputSize} from '@jetbrains/ring-ui-built/components/input/input';
+import Input, {Size as InputSize} from '@jetbrains/ring-ui-built/components/input/input';
 import Button from '@jetbrains/ring-ui-built/components/button/button';
 import ButtonSet from '@jetbrains/ring-ui-built/components/button-set/button-set';
 import Select, {type SelectItem} from '@jetbrains/ring-ui-built/components/select/select';
@@ -34,6 +34,7 @@ const REFRESH_OPTIONS: SelectItem[] = [
 ];
 
 const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel}) => {
+  const [title, setTitle] = useState(config?.title ?? '');
   const [search, setSearch] = useState(config?.search ?? '');
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>(config?.projects ?? []);
   const [availableProjects, setAvailableProjects] = useState<ProjectInfo[]>([]);
@@ -167,6 +168,7 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
   const handleSave = async () => {
     const newConfig: WidgetConfig = {
       search,
+      title: title.trim() || undefined,
       projects: selectedProjectIds,
       statusOrder,
       ltEnabled,
@@ -186,6 +188,16 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
   return (
     <form className="ring-form" style={{padding: '8px 16px', overflowY: 'auto', maxHeight: '100vh'}}>
       <span className="ring-form__title">Issues Progress Settings</span>
+
+      {/* ── Title ── */}
+      <div style={{marginTop: 8, marginBottom: 8}}>
+        <Input
+          label="Заголовок (опционально)"
+          size={InputSize.FULL}
+          value={title}
+          onChange={e => setTitle(e.target.value)}
+        />
+      </div>
 
       {/* ── 1. Project Selector ── */}
       <div style={{marginTop: 8, marginBottom: 8}}>

@@ -5,6 +5,7 @@ import './issues-table.css';
 interface Props {
   issues: Issue[];
   baseUrl: string;
+  description?: string;
   visibleFields?: FieldColumnConfig[];
 }
 
@@ -121,7 +122,7 @@ const FIXED_COLUMNS: FieldColumnConfig[] = [
   {key: 'summary', label: 'Описание'},
 ];
 
-const IssuesTableComponent: React.FC<Props> = ({issues, baseUrl, visibleFields}) => {
+const IssuesTableComponent: React.FC<Props> = ({issues, baseUrl, description, visibleFields}) => {
   const [sort, setSort] = useState<SortState | null>(null);
 
   const columns = useMemo<FieldColumnConfig[]>(() => {
@@ -154,6 +155,7 @@ const IssuesTableComponent: React.FC<Props> = ({issues, baseUrl, visibleFields})
 
   return (
     <div className="it-wrapper">
+      {description && <div className="it-description">{description}</div>}
       <table className="it-table">
         <thead>
           <tr>
