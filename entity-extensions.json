@@ -1,0 +1,10 @@
+{
+  "entityTypeExtensions": [
+    {
+      "entityType": "AppGlobalStorage",
+      "properties": {
+        "aiRequests": { "type": "string" }
+      }
+    }
+  ]
+}

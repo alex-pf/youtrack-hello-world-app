@@ -1,7 +1,8 @@
 import type {EmbeddableWidgetAPI} from '../../../@types/globals';
 import type {
   Issue,
-  AskAiResponse,
+  AskAiStartResponse,
+  AskAiResultResponse,
   IssueActivityItem,
   ActivityPage,
   ActivityValue,
@@ -27,16 +28,75 @@ export async function loadIssues(
   });
 }
 
-export async function askAi(
+// Complex analytical prompts can take waibee longer than YouTrack's own
+// gateway timeout on a synchronous request. ask-ai/ask schedules the waibee
+// call as an async HTTP request on the backend and hands back a requestId
+// immediately; the actual answer is fetched by polling ask-ai/result.
+function startAskAi(
   host: EmbeddableWidgetAPI,
   issues: Issue[],
   prompt: string,
   history: HistoryDigest
-): Promise<AskAiResponse> {
-  return await host.fetchApp<AskAiResponse>('ask-ai/ask', {
+): Promise<AskAiStartResponse> {
+  return host.fetchApp<AskAiStartResponse>('ask-ai/ask', {
     method: 'POST',
     body: {issues, prompt, history}
   });
+}
+
+function pollAskAiResult(
+  host: EmbeddableWidgetAPI,
+  requestId: string
+): Promise<AskAiResultResponse> {
+  return host.fetchApp<AskAiResultResponse>('ask-ai/result', {
+    query: {requestId}
+  });
+}
+
+const POLL_INTERVAL_MS = 2500;
+const POLL_TIMEOUT_MS = 4 * 60 * 1000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+export interface AskAiOptions {
+  /** Called on every poll tick with elapsed time, for a "Ждём ответ..." status message. */
+  onTick?: (elapsedMs: number) => void;
+}
+
+export async function askAi(
+  host: EmbeddableWidgetAPI,
+  issues: Issue[],
+  prompt: string,
+  history: HistoryDigest,
+  options: AskAiOptions = {}
+): Promise<AskAiResultResponse> {
+  const start = await startAskAi(host, issues, prompt, history);
+  if (start.error) {
+    return {status: 'error', error: start.error};
+  }
+  if (!start.requestId) {
+    return {status: 'error', error: 'backend did not return a requestId'};
+  }
+
+  const requestId = start.requestId;
+  const startedAt = Date.now();
+
+  for (;;) {
+    const elapsed = Date.now() - startedAt;
+    if (elapsed > POLL_TIMEOUT_MS) {
+      return {status: 'error', error: `waibee did not respond within ${Math.round(POLL_TIMEOUT_MS / 1000)}s`};
+    }
+
+    await sleep(POLL_INTERVAL_MS);
+    options.onTick?.(Date.now() - startedAt);
+
+    const result = await pollAskAiResult(host, requestId);
+    if (result.status !== 'pending') {
+      return result;
+    }
+  }
 }
 
 /**

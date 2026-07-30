@@ -99,10 +99,12 @@ const AppComponent: React.FC<AppProps> = ({host}) => {
       history = await loadIssuesHistory(host, issues, config.includeComments);
 
       setLoadingPhase('Запрос к AI...');
-      const response = await askAi(host, issues, config.prompt, history);
+      const response = await askAi(host, issues, config.prompt, history, {
+        onTick: elapsedMs => setLoadingPhase(`Ждём ответ AI... (${Math.round(elapsedMs / 1000)}с)`)
+      });
 
-      if (response.error) {
-        throw new Error(response.error);
+      if (response.status === 'error') {
+        throw new Error(response.error || 'unknown error');
       }
 
       setMarkdown(response.markdown || '');

@@ -36,6 +36,10 @@ export default defineConfig({
           dest: '.'
         },
         {
+          src: '../entity-extensions.json',
+          dest: '.'
+        },
+        {
           src: '../public/*.*',
           dest: '.'
         }

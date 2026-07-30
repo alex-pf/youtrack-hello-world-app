@@ -60,7 +60,15 @@ export interface Issue {
   fields: IssueField[];
 }
 
-export interface AskAiResponse {
+/** Response from POST ask-ai/ask — the AI call runs async, this just hands back a poll handle. */
+export interface AskAiStartResponse {
+  requestId?: string;
+  error?: string;
+}
+
+/** Response from GET ask-ai/result — polled until status is no longer "pending". */
+export interface AskAiResultResponse {
+  status: 'pending' | 'done' | 'error';
   markdown?: string;
   error?: string;
 }
