@@ -1,5 +1,13 @@
+html, body, #root {
+  height: 100%;
+}
+
 .hw-issues-list {
+  height: 100%;
+  box-sizing: border-box;
   padding: 4px 16px;
+  display: flex;
+  flex-direction: column;
 }
 
 .hw-center {
@@ -37,6 +45,7 @@
 }
 
 .hw-toolbar {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
