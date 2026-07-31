@@ -12,6 +12,7 @@ import {
   ChildLinkChangeEvent,
   AssigneeRef,
   AssigneeChangeEvent,
+  SortBy,
 } from './types';
 import { extractCurrentState, extractCurrentEstimatedDate, extractCurrentAssignees } from './resources';
 
@@ -1310,7 +1311,8 @@ export function buildIssueStateHistoryData(
   issues: Issue[],
   activitiesMap: Map<string, IssueActivityItem[]>,
   statusOrder: StatusOrderItem[],
-  currentChildrenMap: Map<string, ChildIssueRef[]> = new Map()
+  currentChildrenMap: Map<string, ChildIssueRef[]> = new Map(),
+  sortBy: SortBy = 'startDate'
 ): IssueStateHistoryData[] {
   const result: IssueStateHistoryData[] = [];
 
@@ -1379,10 +1381,42 @@ export function buildIssueStateHistoryData(
         ...childLinkIndicators,
         ...assigneeIndicators,
       ],
+      estimatedDate: currentEstimateDate,
     });
   }
 
+  sortChartData(result, sortBy);
+
   return result;
+}
+
+/** Numeric comparator for issue ids like "PROJ-2" vs "PROJ-10" (not lexicographic). */
+function compareIssueNumber(a: string, b: string): number {
+  const parse = (id: string) => {
+    const m = id.match(/^(.*?)-(\d+)$/);
+    return m ? {prefix: m[1], num: parseInt(m[2], 10)} : {prefix: id, num: 0};
+  };
+  const pa = parse(a);
+  const pb = parse(b);
+  if (pa.prefix !== pb.prefix) return pa.prefix.localeCompare(pb.prefix);
+  return pa.num - pb.num;
+}
+
+function sortChartData(chartData: IssueStateHistoryData[], sortBy: SortBy): void {
+  switch (sortBy) {
+    case 'issueNumber':
+      chartData.sort((a, b) => compareIssueNumber(a.idReadable, b.idReadable));
+      break;
+    case 'estimatedDate':
+      chartData.sort((a, b) =>
+        (a.estimatedDate ?? Number.MAX_SAFE_INTEGER) - (b.estimatedDate ?? Number.MAX_SAFE_INTEGER)
+      );
+      break;
+    case 'startDate':
+    default:
+      chartData.sort((a, b) => a.overallStart - b.overallStart);
+      break;
+  }
 }
 
 // ─── Debug helper ────────────────────────────────────────────────────────────

@@ -311,17 +311,34 @@ export default function GanttChart({ data, statusOrder, baseUrl, gridStep, visib
         .attr('width', LABELS_WIDTH - 4)
         .attr('height', BAR_HEIGHT);
 
+      // Label tooltip shows the issue title and current LT (elapsed time
+      // across the segments rendered on this row, i.e. overallEnd - overallStart).
+      const attachLabelTooltip = (sel: d3.Selection<SVGForeignObjectElement | HTMLElement, unknown, null, undefined>) => {
+        sel
+          .on('mouseover', function (event: MouseEvent) {
+            if (!tooltipEl) return;
+            const ltDays = (issueData.overallEnd - issueData.overallStart) / DAY_MS;
+            tooltipEl.innerHTML = buildTooltipHtml(issueData.idReadable, [
+              { label: 'Название', value: issueData.summary },
+              { label: 'LT', value: `${ltDays.toFixed(1)} дн.` },
+            ]);
+            tooltipEl.style.display = 'block';
+            moveTooltip(event);
+          })
+          .on('mousemove', function (event: MouseEvent) { moveTooltip(event); })
+          .on('mouseout', function () { hideTooltip(); });
+      };
+
       if (issueUrl) {
         // `as any` is required because D3's TypeScript types do not include the
         // xhtml: namespace prefix needed to render an <a> element inside SVG
         // foreignObject. The xhtml: prefix is the correct W3C way to embed HTML
         // elements in SVG, but @types/d3 only exposes standard SVG element names.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        fo.append('xhtml:a' as any)
+        const link = fo.append('xhtml:a' as any)
           .attr('href', issueUrl)
           .attr('target', '_blank')
           .attr('rel', 'noopener noreferrer')
-          .attr('title', issueData.summary)
           .style('display', 'block')
           .style('overflow', 'hidden')
           .style('text-overflow', 'ellipsis')
@@ -333,10 +350,10 @@ export default function GanttChart({ data, statusOrder, baseUrl, gridStep, visib
           .style('text-align', 'right')
           .style('padding-right', '4px')
           .text(issueData.idReadable);
+        attachLabelTooltip(link);
       } else {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        fo.append('xhtml:div' as any)
-          .attr('title', issueData.summary)
+        const label = fo.append('xhtml:div' as any)
           .style('overflow', 'hidden')
           .style('text-overflow', 'ellipsis')
           .style('white-space', 'nowrap')
@@ -346,6 +363,7 @@ export default function GanttChart({ data, statusOrder, baseUrl, gridStep, visib
           .style('text-align', 'right')
           .style('padding-right', '4px')
           .text(issueData.idReadable);
+        attachLabelTooltip(label);
       }
     });
 

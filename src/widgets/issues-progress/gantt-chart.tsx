@@ -498,7 +498,6 @@ export default function GanttChart({
         .attr('href', issueUrl)
         .attr('target', '_blank')
         .attr('rel', 'noopener noreferrer')
-        .attr('title', issueData.summary)
         .style('display', 'block')
         .style('overflow', 'hidden')
         .style('text-overflow', 'ellipsis')
@@ -509,7 +508,18 @@ export default function GanttChart({
         .style('text-decoration', 'none')
         .style('text-align', 'right')
         .style('padding-right', '4px')
-        .text(issueData.idReadable);
+        .text(issueData.idReadable)
+        .on('mouseover', function (event: MouseEvent) {
+          if (!tooltipEl) return;
+          tooltipEl.innerHTML = buildTooltipHtml(issueData.idReadable, [
+            { label: 'Название', value: issueData.summary },
+            { label: 'LT', value: `${issueData.totalDays.toFixed(1)} дн.` },
+          ]);
+          tooltipEl.style.display = 'block';
+          moveTooltip(event);
+        })
+        .on('mousemove', function (event: MouseEvent) { moveTooltip(event); })
+        .on('mouseout', function () { hideTooltip(); });
     });
 
   }, [data, debouncedWidth, ltEnabled, ltSettings, showEstimateDate, showProjectedLT, statusOrder, baseUrl]);

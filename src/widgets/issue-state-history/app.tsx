@@ -118,7 +118,7 @@ export default function App({ host }: Props) {
       );
 
       // Build chart data from parsed activities
-      const data = buildIssueStateHistoryData(issues, activitiesMap, cfg.statusOrder, currentChildrenMap);
+      const data = buildIssueStateHistoryData(issues, activitiesMap, cfg.statusOrder, currentChildrenMap, cfg.sortBy);
 
       setChartData(data);
       // Persist raw data for debug mode

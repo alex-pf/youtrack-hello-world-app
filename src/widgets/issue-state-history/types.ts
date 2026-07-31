@@ -9,11 +9,18 @@ export interface StatusOrderItem {
 export type GridStep = 'day' | 'week' | 'month';
 
 // In-memory widget config (rich objects)
+// Row order for the chart:
+// - 'startDate' — date the issue entered the configured start status (overallStart)
+// - 'issueNumber' — issue id, compared numerically (PROJ-2 before PROJ-10)
+// - 'estimatedDate' — current Estimated Date field value
+export type SortBy = 'startDate' | 'issueNumber' | 'estimatedDate';
+
 export interface WidgetConfig {
   search: string;
   title?: string;
   projects: string[];           // array of project IDs
   statusOrder: StatusOrderItem[]; // ordered list of statuses; first entry = "start" status
+  sortBy: SortBy;
   refreshInterval: number;      // minutes; 0 = no auto-refresh
   debugMode: boolean;           // show status transition history below chart
   description?: string;         // markdown text shown below chart
@@ -29,10 +36,17 @@ export interface StoredWidgetConfig {
   title?: string;
   projects?: string;            // JSON-encoded string[]
   statusOrder?: string;         // JSON-encoded StatusOrderItem[]
+  sortBy?: string;
   refreshInterval?: number;
   debugMode?: string;           // 'true' | 'false'
   description?: string;
   gridStep?: string;            // 'day' | 'week' | 'month'
+}
+
+const SORT_BY_VALUES: SortBy[] = ['startDate', 'issueNumber', 'estimatedDate'];
+
+function parseSortBy(value: string | undefined): SortBy {
+  return SORT_BY_VALUES.includes(value as SortBy) ? (value as SortBy) : 'startDate';
 }
 
 export function parseStoredConfig(stored: Record<string, string>): WidgetConfig {
@@ -41,6 +55,7 @@ export function parseStoredConfig(stored: Record<string, string>): WidgetConfig 
     title: stored.title,
     projects: stored.projects ? JSON.parse(stored.projects) : [],
     statusOrder: stored.statusOrder ? JSON.parse(stored.statusOrder) : [],
+    sortBy: parseSortBy(stored.sortBy),
     refreshInterval: stored.refreshInterval ? Number(stored.refreshInterval) : 0,
     debugMode: stored.debugMode === 'true',
     description: stored.description ?? '',
@@ -54,6 +69,7 @@ export function serializeConfig(config: WidgetConfig): StoredWidgetConfig {
     title: config.title,
     projects: JSON.stringify(config.projects),
     statusOrder: JSON.stringify(config.statusOrder),
+    sortBy: config.sortBy,
     refreshInterval: config.refreshInterval,
     debugMode: String(config.debugMode),
     description: config.description ?? '',
@@ -308,6 +324,9 @@ export interface IssueStateHistoryData {
   // hatching). Empty/undefined until a later task adds a producer — see
   // ChartIndicator below for the shared data contract.
   indicators?: ChartIndicator[];
+  // Current value of the Estimated Date field, for the "Estimated Date"
+  // sort option. Null if the issue has no estimate set.
+  estimatedDate: number | null;
 }
 
 // ─── Chart indicators ───────────────────────────────────────────────────────

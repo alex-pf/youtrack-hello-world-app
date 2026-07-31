@@ -84,7 +84,8 @@ export default function App({ host }: Props) {
         activitiesMap,
         cfg.statusOrder,
         cfg.showEstimateDate,
-        cfg.showProjectedLT ?? false
+        cfg.showProjectedLT ?? false,
+        cfg.sortBy
       );
 
       setChartData(data);

@@ -6,6 +6,7 @@ import {
   StatusSegment,
   EstimateDateChange,
   StatusOrderItem,
+  SortBy,
 } from './types';
 import { extractIssueTypeName, extractCurrentState } from './resources';
 
@@ -515,6 +516,7 @@ export function buildIssueChartData(
   const totalDays = segments.reduce((sum, s) => sum + s.durationDays, 0);
 
   const issueType = extractIssueTypeName(issue);
+  const estimatedDate = getEstimateDateFromFields(issue);
 
   return {
     issueId: issue.id,
@@ -528,7 +530,39 @@ export function buildIssueChartData(
     projectedLTDate,
     leadTimeStartAt,
     neverReachedStartStatus,
+    estimatedDate,
   };
+}
+
+/** Numeric comparator for issue ids like "PROJ-2" vs "PROJ-10" (not lexicographic). */
+function compareIssueNumber(a: string, b: string): number {
+  const parse = (id: string) => {
+    const m = id.match(/^(.*?)-(\d+)$/);
+    return m ? {prefix: m[1], num: parseInt(m[2], 10)} : {prefix: id, num: 0};
+  };
+  const pa = parse(a);
+  const pb = parse(b);
+  if (pa.prefix !== pb.prefix) return pa.prefix.localeCompare(pb.prefix);
+  return pa.num - pb.num;
+}
+
+function sortChartData(chartData: IssueChartData[], sortBy: SortBy): void {
+  switch (sortBy) {
+    case 'issueNumber':
+      chartData.sort((a, b) => compareIssueNumber(a.idReadable, b.idReadable));
+      break;
+    case 'estimatedDate':
+      chartData.sort((a, b) =>
+        (a.estimatedDate ?? Number.MAX_SAFE_INTEGER) - (b.estimatedDate ?? Number.MAX_SAFE_INTEGER)
+      );
+      break;
+    case 'startDate':
+    default:
+      chartData.sort((a, b) =>
+        (a.leadTimeStartAt ?? Number.MAX_SAFE_INTEGER) - (b.leadTimeStartAt ?? Number.MAX_SAFE_INTEGER)
+      );
+      break;
+  }
 }
 
 /**
@@ -540,14 +574,16 @@ export function buildIssueChartData(
  * @param statusOrder - Ordered statuses from widget config
  * @param showEstimateDate - Whether to parse estimate date history
  * @param showProjectedLT - Whether to show the projected lead time marker
- * @returns Array of IssueChartData sorted by totalDays descending
+ * @param sortBy - Row order (see SortBy); defaults to 'startDate'
+ * @returns Array of IssueChartData sorted per sortBy
  */
 export function buildChartData(
   issues: Issue[],
   activitiesMap: Map<string, IssueActivityItem[]>,
   statusOrder: StatusOrderItem[],
   showEstimateDate: boolean,
-  showProjectedLT: boolean = false
+  showProjectedLT: boolean = false,
+  sortBy: SortBy = 'startDate'
 ): IssueChartData[] {
   const chartData: IssueChartData[] = [];
 
@@ -558,8 +594,7 @@ export function buildChartData(
     chartData.push(data);
   }
 
-  // Sort by totalDays descending (longest issues at top)
-  chartData.sort((a, b) => b.totalDays - a.totalDays);
+  sortChartData(chartData, sortBy);
 
   return chartData;
 }

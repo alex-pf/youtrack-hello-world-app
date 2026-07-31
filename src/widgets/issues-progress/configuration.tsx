@@ -14,7 +14,7 @@ import QueryAssist from '@jetbrains/ring-ui-built/components/query-assist/query-
 import type {QueryAssistRequestParams} from '@jetbrains/ring-ui-built/components/query-assist/query-assist';
 import Checkbox from '@jetbrains/ring-ui-built/components/checkbox/checkbox';
 import type {EmbeddableWidgetAPI} from '../../../@types/globals';
-import type {WidgetConfig, StatusOrderItem, LtSettings, ProjectInfo, IssueType} from './types';
+import type {WidgetConfig, StatusOrderItem, LtSettings, ProjectInfo, IssueType, SortBy} from './types';
 import {serializeConfig} from './types';
 import {loadProjects, loadProjectCustomFields, queryAssistDataSource} from './resources';
 
@@ -33,6 +33,12 @@ const REFRESH_OPTIONS: SelectItem[] = [
   {key: 120, label: '2 hours'},
 ];
 
+const SORT_OPTIONS: SelectItem[] = [
+  {key: 'startDate', label: 'Дата старта'},
+  {key: 'issueNumber', label: 'По номеру'},
+  {key: 'estimatedDate', label: 'Estimated Date'},
+];
+
 const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel}) => {
   const [title, setTitle] = useState(config?.title ?? '');
   const [search, setSearch] = useState(config?.search ?? '');
@@ -46,6 +52,7 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
   const [showEstimateDate, setShowEstimateDate] = useState(config?.showEstimateDate ?? false);
   const [showProjectedLT, setShowProjectedLT] = useState(config?.showProjectedLT ?? false);
   const [refreshInterval, setRefreshInterval] = useState(config?.refreshInterval ?? 0);
+  const [sortBy, setSortBy] = useState<SortBy>(config?.sortBy ?? 'startDate');
   const [debugMode, setDebugMode] = useState(config?.debugMode ?? false);
   const [description, setDescription] = useState(config?.description ?? '');
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
@@ -175,6 +182,7 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
       ltSettings,
       showEstimateDate,
       showProjectedLT,
+      sortBy,
       refreshInterval,
       debugMode,
       description,
@@ -403,6 +411,18 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
           label="Debug (show status transition history)"
           checked={debugMode}
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDebugMode(e.target.checked)}
+        />
+      </div>
+
+      {/* ── Sort ── */}
+      <div style={{marginTop: 12, marginBottom: 16}}>
+        <span className="ip-section-label">Сортировка</span>
+        <Select
+          label="Сортировка"
+          size={InputSize.FULL}
+          data={SORT_OPTIONS}
+          selected={SORT_OPTIONS.find(o => o.key === sortBy)}
+          onChange={(item: SelectItem | null) => setSortBy((item?.key as SortBy) ?? 'startDate')}
         />
       </div>
 

@@ -14,6 +14,12 @@ export interface StatusOrderItem {
   color?: string;
 }
 
+// Row order for the chart:
+// - 'startDate' — date the issue entered the configured start status (leadTimeStartAt)
+// - 'issueNumber' — issue id, compared numerically (PROJ-2 before PROJ-10)
+// - 'estimatedDate' — current Estimated Date field value
+export type SortBy = 'startDate' | 'issueNumber' | 'estimatedDate';
+
 // In-memory widget config (rich objects)
 export interface WidgetConfig {
   search: string;
@@ -24,6 +30,7 @@ export interface WidgetConfig {
   ltSettings: LtSettings;       // per-type LT thresholds
   showEstimateDate: boolean;
   showProjectedLT: boolean;
+  sortBy: SortBy;
   refreshInterval: number;      // minutes; 0 = no auto-refresh
   debugMode: boolean;           // show status transition history below chart
   description?: string;         // markdown text shown below chart
@@ -39,9 +46,16 @@ export interface StoredWidgetConfig {
   ltSettings?: string;          // JSON-encoded LtSettings
   showEstimateDate?: string;    // 'true' | 'false'
   showProjectedLT?: string;
+  sortBy?: string;
   refreshInterval?: number;
   debugMode?: string;           // 'true' | 'false'
   description?: string;
+}
+
+const SORT_BY_VALUES: SortBy[] = ['startDate', 'issueNumber', 'estimatedDate'];
+
+function parseSortBy(value: string | undefined): SortBy {
+  return SORT_BY_VALUES.includes(value as SortBy) ? (value as SortBy) : 'startDate';
 }
 
 export function parseStoredConfig(stored: Record<string, string>): WidgetConfig {
@@ -54,6 +68,7 @@ export function parseStoredConfig(stored: Record<string, string>): WidgetConfig 
     ltSettings: stored.ltSettings ? JSON.parse(stored.ltSettings) : {},
     showEstimateDate: stored.showEstimateDate === 'true',
     showProjectedLT: stored.showProjectedLT !== 'false',
+    sortBy: parseSortBy(stored.sortBy),
     refreshInterval: stored.refreshInterval ? Number(stored.refreshInterval) : 0,
     debugMode: stored.debugMode === 'true',
     description: stored.description ?? '',
@@ -70,6 +85,7 @@ export function serializeConfig(config: WidgetConfig): StoredWidgetConfig {
     ltSettings: JSON.stringify(config.ltSettings),
     showEstimateDate: String(config.showEstimateDate),
     showProjectedLT: String(config.showProjectedLT),
+    sortBy: config.sortBy,
     refreshInterval: config.refreshInterval,
     debugMode: String(config.debugMode),
     description: config.description ?? '',
@@ -193,6 +209,10 @@ export interface IssueChartData {
   // the full chronological history from creation instead of being anchored
   // at the configured start status.
   neverReachedStartStatus: boolean;
+  // Current value of the Estimated Date field (read directly from
+  // issue.fields, independent of showEstimateDate/showProjectedLT), for the
+  // "Estimated Date" sort option. Null if the issue has no estimate set.
+  estimatedDate: number | null;
 }
 
 export interface StatusSegment {
