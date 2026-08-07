@@ -425,6 +425,7 @@ export default function App({ host }: Props) {
           gridStep={config?.gridStep ?? 1}
           baseUrl={baseUrl}
           groupFieldLabel={config?.groupByField || undefined}
+          percentileStageName={config?.statusStages.find(s => s.id === selectedStageId)?.name}
         />
       </div>
 

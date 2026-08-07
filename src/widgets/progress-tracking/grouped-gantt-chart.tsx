@@ -1,6 +1,6 @@
 import React from 'react';
 import { IssueChartData, StatusOrderItem, GridStep } from './types';
-import GanttChart, { STATUS_COLORS, UNCONFIGURED_COLOR } from './gantt-chart';
+import GanttChart, { STATUS_COLORS, UNCONFIGURED_COLOR, formatLeadTimeDays } from './gantt-chart';
 import './gantt-chart.css';
 
 interface GroupedGanttChartProps {
@@ -11,6 +11,7 @@ interface GroupedGanttChartProps {
   gridStep: GridStep;
   baseUrl: string;
   groupFieldLabel?: string; // optional label prefix for the section title, e.g. "Type"
+  percentileStageName?: string; // name of the stage currently driving the percentile zones, for the title's LT summary
 }
 
 export default function GroupedGanttChart({
@@ -21,6 +22,7 @@ export default function GroupedGanttChart({
   gridStep,
   baseUrl,
   groupFieldLabel,
+  percentileStageName,
 }: GroupedGanttChartProps) {
   if (groups.size === 0) {
     return (
@@ -57,9 +59,18 @@ export default function GroupedGanttChart({
       <div className="ip-groups-scroll">
         {Array.from(groups.entries()).map(([groupKey, items]) => {
           const displayValue = groupKey || '(без значения)';
-          const title = groupFieldLabel
+          const baseTitle = groupFieldLabel
             ? `${groupFieldLabel}: ${displayValue} (${items.length})`
             : `${displayValue} (${items.length})`;
+
+          // LT summary for the stage currently driving the percentile
+          // background zones — omitted when no stage is selected/active, or
+          // when this group has no resolved-issue sample for it (percentiles
+          // === null, e.g. no issue in the group ever reached the stage).
+          const percentiles = percentilesByGroup.get(groupKey) ?? null;
+          const title = percentileStageName && percentiles
+            ? `${baseTitle} LT этапа ${percentileStageName}: 50% - ${formatLeadTimeDays(percentiles.p50)}, 80% - ${formatLeadTimeDays(percentiles.p80)}`
+            : baseTitle;
 
           return (
             <div className="ip-group-section" key={groupKey}>

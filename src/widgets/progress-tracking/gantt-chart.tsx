@@ -32,6 +32,13 @@ export const STATUS_COLORS = [
 // configured-but-colorless statuses.
 export const UNCONFIGURED_COLOR = '#9E9E9E';
 
+// Formats a lead-time day count as "Nd" (≤28 days) or "Nw" (>28 days,
+// rounded to whole weeks) — shared between the Projected LT marker label and
+// the group section title's LT summary, so the two never drift apart.
+export function formatLeadTimeDays(days: number): string {
+  return days > 28 ? `${Math.round(days / 7)}w` : `${Math.round(days)}d`;
+}
+
 // ─── XSS-safe tooltip builder ─────────────────────────────────────────────────
 function buildTooltipHtml(title: string, rows: { label: string; value: string }[]): string {
   const escHtml = (s: string) =>
@@ -288,10 +295,7 @@ export default function GanttChart({
           const dateStr = new Date(estimatedDate).toLocaleDateString(undefined, {
             day: '2-digit', month: '2-digit', year: '2-digit',
           });
-          const days = issueData.projectedLeadTimeDays;
-          const ltStr = days > 28
-            ? `${Math.round(days / 7)}w`
-            : `${Math.round(days)}d`;
+          const ltStr = formatLeadTimeDays(issueData.projectedLeadTimeDays);
           const labelText = `LT-${ltStr}; ${dateStr}`;
           const estimatedLabelWidth = labelText.length * 5.4;
           const labelX = tickX + estimatedLabelWidth + 4 > chartWidth
