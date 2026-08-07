@@ -1,0 +1,204 @@
+/* ─── Wrapper ─────────────────────────────────────────────────────────────── */
+.ip-gantt-wrapper {
+  position: relative;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─── Scroll container (single-group chart's own horizontal scroll) ────────── */
+.ip-gantt-scroll {
+  position: relative;
+}
+
+/* ─── SVG ─────────────────────────────────────────────────────────────────── */
+.ip-gantt-svg {
+  display: block;
+}
+
+/* ─── Axes ────────────────────────────────────────────────────────────────── */
+.ip-gantt-svg .x-axis path,
+.ip-gantt-svg .x-axis line {
+  stroke: var(--ring-borders-color);
+}
+
+.ip-gantt-svg .x-axis text {
+  fill: var(--ring-secondary-color);
+  font-size: 11px;
+}
+
+/* ─── Grid lines ──────────────────────────────────────────────────────────── */
+.ip-gantt-svg .grid-lines line {
+  pointer-events: none;
+}
+
+/* ─── Percentile background zones ────────────────────────────────────────── */
+.ip-gantt-svg .percentile-zone {
+  pointer-events: none;
+}
+
+.ip-gantt-svg .percentile-zone--green {
+  fill: #4CAF50;
+  fill-opacity: 0.12;
+}
+
+.ip-gantt-svg .percentile-zone--yellow {
+  fill: #FFC107;
+  fill-opacity: 0.15;
+}
+
+.ip-gantt-svg .percentile-zone--red {
+  fill: #F44336;
+  fill-opacity: 0.12;
+}
+
+/* ─── Segments ────────────────────────────────────────────────────────────── */
+.ip-gantt-svg .segment {
+  opacity: 0.85;
+  transition: opacity 0.15s;
+  cursor: default;
+}
+
+.ip-gantt-svg .segment:hover {
+  opacity: 1;
+}
+
+/* ─── Tooltip ─────────────────────────────────────────────────────────────── */
+.ip-gantt-tooltip {
+  position: absolute;
+  background: var(--ring-popup-background-color, var(--ring-content-background-color));
+  border: 1px solid var(--ring-borders-color);
+  border-radius: 4px;
+  padding: 8px 10px;
+  font-size: var(--ring-font-size-smaller);
+  color: var(--ring-text-color);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  pointer-events: none;
+  z-index: 100;
+  min-width: 180px;
+  max-width: 280px;
+}
+
+.ip-gantt-tooltip__header {
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--ring-text-color);
+  border-bottom: 1px solid var(--ring-line-color);
+  padding-bottom: 4px;
+}
+
+.ip-gantt-tooltip__row {
+  display: flex;
+  gap: 6px;
+  margin-top: 3px;
+  line-height: 1.4;
+}
+
+.ip-gantt-tooltip__label {
+  color: var(--ring-secondary-color);
+  flex-shrink: 0;
+  min-width: 50px;
+}
+
+/* ─── Empty state ─────────────────────────────────────────────────────────── */
+.ip-gantt-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ring-secondary-color);
+  font-size: var(--ring-font-size);
+  padding: 32px;
+  text-align: center;
+}
+
+/* ─── Row hover highlight ─────────────────────────────────────────────────── */
+.ip-gantt-svg .row-bg {
+  transition: fill 0.1s;
+}
+
+/* ─── Issue ID link hover ─────────────────────────────────────────────────── */
+.ip-gantt-svg foreignObject a:hover {
+  text-decoration: underline !important;
+  color: var(--ring-link-hover-color) !important;
+}
+
+/* ─── Projected LT marker ────────────────────────────────────────────────── */
+.ip-gantt-svg .projected-lt-marker-target:hover + .projected-lt-marker,
+.ip-gantt-svg .projected-lt-marker-target:hover ~ .projected-lt-marker-label {
+  opacity: 1;
+}
+
+/* ─── Scrollbar styling ───────────────────────────────────────────────────── */
+.ip-gantt-scroll::-webkit-scrollbar,
+.ip-groups-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.ip-gantt-scroll::-webkit-scrollbar-track,
+.ip-groups-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ip-gantt-scroll::-webkit-scrollbar-thumb,
+.ip-groups-scroll::-webkit-scrollbar-thumb {
+  background: var(--ring-borders-color);
+  border-radius: 3px;
+}
+
+.ip-gantt-scroll::-webkit-scrollbar-thumb:hover,
+.ip-groups-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--ring-icon-secondary-color);
+}
+
+/* ─── Legend (shared, rendered once by grouped-gantt-chart) ─────────────────── */
+.ip-gantt-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--ring-line-color);
+  flex-shrink: 0;
+}
+
+.ip-gantt-legend__item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ip-gantt-legend__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.ip-gantt-legend__label {
+  font-size: var(--ring-font-size-smaller);
+  color: var(--ring-text-color);
+  white-space: nowrap;
+}
+
+/* ─── Grouped charts container ───────────────────────────────────────────── */
+.ip-groups-scroll {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.ip-group-section {
+  margin-bottom: 12px;
+}
+
+.ip-group-section__title {
+  font-weight: 600;
+  padding: 8px;
+  border-bottom: 1px solid var(--ring-line-color);
+  position: sticky;
+  top: 0;
+  background: var(--ring-content-background-color);
+  z-index: 1;
+  color: var(--ring-text-color);
+  font-size: var(--ring-font-size);
+}

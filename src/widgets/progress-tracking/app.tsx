@@ -1,0 +1,401 @@
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import LoaderInline from '@jetbrains/ring-ui-built/components/loader-inline/loader-inline';
+import { marked } from 'marked';
+import DOMPurify from 'dompurify';
+import { EmbeddableWidgetAPI } from '../../../@types/globals';
+import Configuration from './configuration';
+import GroupedGanttChart from './grouped-gantt-chart';
+import { WidgetConfig, IssueChartData, IssueActivityItem, Issue, parseStoredConfig } from './types';
+import { loadIssuesWithActivities, loadIssuesCount } from './resources';
+import { buildChartData, groupChartData, parseStateTimeline, findLeadTimeStartAt } from './activity-parser';
+import { fetchGroupPercentiles } from './percentiles';
+import './app.css';
+
+interface Props {
+  host: EmbeddableWidgetAPI;
+}
+
+/**
+ * Combines the primary and additional search filters into a single YouTrack
+ * query used to determine chart composition — see
+ * docs/PROGRESS_TRACKING_SPEC.md section 8, assumption 3.
+ */
+function buildCombinedQuery(primarySearch: string, additionalSearch: string): string {
+  const additional = additionalSearch.trim();
+  return additional ? `(${primarySearch}) and (${additional})` : primarySearch;
+}
+
+export default function App({ host }: Props) {
+  const [isConfiguring, setIsConfiguring] = useState(false);
+  const [config, setConfig] = useState<WidgetConfig | null>(null);
+  const [chartData, setChartData] = useState<IssueChartData[]>([]);
+  const [groups, setGroups] = useState<Map<string, IssueChartData[]>>(new Map());
+  const [percentilesByGroup, setPercentilesByGroup] = useState<Map<string, { p50: number; p80: number } | null>>(new Map());
+  const [totalCount, setTotalCount] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState('Loading issues...');
+  const [error, setError] = useState<string | null>(null);
+  const [baseUrl, setBaseUrl] = useState('');
+  const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Ref to always have the latest config inside setInterval closure
+  const configRef = useRef<WidgetConfig | null>(null);
+  // Raw data kept for debug mode rendering
+  const [debugIssues, setDebugIssues] = useState<Issue[]>([]);
+  const [debugActivitiesMap, setDebugActivitiesMap] = useState<Map<string, IssueActivityItem[]>>(new Map());
+
+  // ─── Configure event bridge ────────────────────────────────────────────────
+  useEffect(() => {
+    const handleConfigure = () => {
+      setIsConfiguring(true);
+      host.enterConfigMode();
+    };
+    window.addEventListener('yt-widget-configure', handleConfigure);
+    return () => window.removeEventListener('yt-widget-configure', handleConfigure);
+  }, [host]);
+
+  // ─── Data fetching ─────────────────────────────────────────────────────────
+  const fetchData = useCallback(async (cfg: WidgetConfig, silent: boolean) => {
+    if (!silent) {
+      setIsLoading(true);
+      setError(null);
+    } else {
+      setIsRefreshing(true);
+    }
+
+    try {
+      await host.clearError();
+
+      const combinedQuery = buildCombinedQuery(cfg.primarySearch, cfg.additionalSearch ?? '');
+
+      // Load total count for title
+      const count = await loadIssuesCount(host, combinedQuery);
+      setTotalCount(count);
+
+      // Update widget title
+      const title = cfg.title || 'Progress Tracking';
+      // YouTrack returns -1 when count is still calculating
+      const countLabel = count >= 0 ? ` (${count})` : '';
+      await host.setTitle(`${title}${countLabel}`, '');
+
+      // Load issues + activities with progress updates
+      const { issues, activitiesMap } = await loadIssuesWithActivities(
+        host,
+        combinedQuery,
+        (phase, loaded, total) => {
+          if (!silent) {
+            if (phase === 'issues') {
+              setLoadingMessage(`Loading issues... ${loaded}`);
+            } else {
+              setLoadingMessage(`Loading history... ${loaded}/${total}`);
+            }
+          }
+        }
+      );
+
+      // Build flat chart data (all issues matching the combined filter,
+      // including open ones — no resolved filtering here, per spec section 4)
+      const flatChartData = buildChartData(
+        issues,
+        activitiesMap,
+        cfg.statusOrder,
+        cfg.showProjectedLT ?? false,
+        cfg.groupByField ?? ''
+      );
+
+      // Group by groupByField value, sorted within each group by sortBy
+      const groupedData = groupChartData(flatChartData, cfg.sortBy);
+
+      if (!silent) {
+        setLoadingMessage('Calculating percentiles...');
+      }
+
+      // Per-group lead-time percentiles (resolved-only sample) for the
+      // background zones
+      const percentiles = await fetchGroupPercentiles(host, {
+        primarySearch: cfg.primarySearch,
+        additionalSearch: cfg.additionalSearch ?? '',
+        groupByField: cfg.groupByField ?? '',
+        statusOrder: cfg.statusOrder,
+        groupValues: Array.from(groupedData.keys()),
+        alreadyLoaded: { issues, activitiesMap },
+      });
+
+      setChartData(flatChartData);
+      setGroups(groupedData);
+      setPercentilesByGroup(percentiles);
+      // Persist raw data for debug mode
+      setDebugIssues(issues);
+      setDebugActivitiesMap(activitiesMap);
+      setError(null);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg);
+      await host.setError(e as Error);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, [host]);
+
+  // ─── Initialization ────────────────────────────────────────────────────────
+  useEffect(() => {
+    async function init() {
+      try {
+        // Load base URL for issue links
+        const services = await host.loadServices('YouTrack');
+        if (services?.[0]?.homeUrl) {
+          setBaseUrl(services[0].homeUrl);
+        } else {
+          console.warn('YouTrack homeUrl not found, issue links will be relative');
+        }
+
+        // Load saved config
+        const stored = await host.readConfig<Record<string, string>>();
+        // Parse whatever is stored so Configuration gets pre-filled fields
+        // (e.g. description) even when primarySearch is not yet set.
+        const parsedConfig = stored ? parseStoredConfig(stored) : null;
+        setConfig(parsedConfig);
+        configRef.current = parsedConfig;
+
+        if (!stored?.primarySearch) {
+          // No config yet — enter configuration mode
+          setIsConfiguring(true);
+          await host.enterConfigMode();
+          setIsLoading(false);
+          return;
+        }
+        await fetchData(parsedConfig!, false);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        setError(msg);
+        await host.setError(e as Error);
+      } finally {
+        await host.setLoadingAnimationEnabled(false);
+        setIsLoading(false);
+      }
+    }
+    init();
+  }, [host, fetchData]);
+
+  // ─── Auto-refresh ──────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (refreshTimerRef.current) {
+      clearInterval(refreshTimerRef.current);
+      refreshTimerRef.current = null;
+    }
+
+    if (config?.refreshInterval && config.refreshInterval > 0) {
+      const intervalMs = config.refreshInterval * 60 * 1000;
+      refreshTimerRef.current = setInterval(() => {
+        if (configRef.current) {
+          fetchData(configRef.current, true);
+        }
+      }, intervalMs);
+    }
+
+    return () => {
+      if (refreshTimerRef.current) {
+        clearInterval(refreshTimerRef.current);
+      }
+    };
+  }, [config?.refreshInterval, fetchData]);
+
+  // ─── Config save handler ───────────────────────────────────────────────────
+  const handleConfigSave = async (newConfig: WidgetConfig) => {
+    setConfig(newConfig);
+    configRef.current = newConfig;
+    setIsConfiguring(false);
+    setIsLoading(true);
+    await fetchData(newConfig, false);
+  };
+
+  // ─── Config cancel handler ─────────────────────────────────────────────────
+  const handleConfigCancel = () => {
+    if (!config) {
+      host.removeWidget();
+    } else {
+      setIsConfiguring(false);
+      host.exitConfigMode();
+    }
+  };
+
+  // ─── Derived render values (hooks must be before early returns) ───────────
+  const descriptionHtml = useMemo(
+    () => config?.description
+      ? DOMPurify.sanitize(marked(config.description) as string)
+      : '',
+    [config?.description]
+  );
+
+  // ─── Render ────────────────────────────────────────────────────────────────
+
+  if (isConfiguring) {
+    return (
+      <Configuration
+        config={config}
+        host={host}
+        onSave={handleConfigSave}
+        onCancel={handleConfigCancel}
+      />
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="ip-center">
+        <div style={{ textAlign: 'center' }}>
+          <LoaderInline />
+          <div style={{
+            marginTop: '8px',
+            fontSize: 'var(--ring-font-size-smaller)',
+            color: 'var(--ring-secondary-color)'
+          }}>
+            {loadingMessage}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="ip-error">
+        <div>
+          <div style={{ fontWeight: 600, marginBottom: '4px' }}>Failed to load data</div>
+          <div style={{ fontSize: 'var(--ring-font-size-smaller)' }}>{error}</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (chartData.length === 0) {
+    return (
+      <div className="ip-empty">
+        <div>
+          <div style={{ marginBottom: '4px' }}>No issues found</div>
+          <div style={{ fontSize: 'var(--ring-font-size-smaller)' }}>
+            {config?.primarySearch
+              ? `No issues match the query: "${config.primarySearch}"`
+              : 'Configure a search query to display issues.'}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ position: 'absolute', inset: 0, display: 'grid', gridTemplateRows: 'auto 1fr auto', overflow: 'hidden' }}>
+      {/* Toolbar */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'flex-end',
+        alignItems: 'center',
+        padding: '2px 8px',
+        gap: 8,
+        flexShrink: 0,
+      }}>
+        {isRefreshing && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            fontSize: 'var(--ring-font-size-smaller)',
+            color: 'var(--ring-secondary-color)',
+          }}>
+            <LoaderInline />
+            <span>Refreshing...</span>
+          </div>
+        )}
+        <button
+          onClick={() => config && fetchData(config, true)}
+          disabled={isRefreshing}
+          style={{
+            background: 'none',
+            border: '1px solid var(--ring-borders-color)',
+            borderRadius: 4,
+            padding: '2px 10px',
+            cursor: isRefreshing ? 'default' : 'pointer',
+            fontSize: 'var(--ring-font-size-smaller)',
+            color: 'var(--ring-text-color)',
+            opacity: isRefreshing ? 0.5 : 1,
+          }}
+        >
+          Обновить
+        </button>
+      </div>
+
+      {/* Grouped Gantt charts — scrollable, takes all remaining space */}
+      <div style={{ overflow: 'auto', minHeight: 0 }}>
+        <GroupedGanttChart
+          groups={groups}
+          percentilesByGroup={percentilesByGroup}
+          statusOrder={config?.statusOrder ?? []}
+          showProjectedLT={config?.showProjectedLT ?? false}
+          gridStep={config?.gridStep ?? 1}
+          baseUrl={baseUrl}
+          groupFieldLabel={config?.groupByField || undefined}
+        />
+      </div>
+
+      {/* Markdown description — fixed below chart, sized to content */}
+      {descriptionHtml && (
+        <div
+          className="ip-description"
+          dangerouslySetInnerHTML={{__html: descriptionHtml}}
+        />
+      )}
+
+      {/* Debug: status transition history */}
+      {config?.debugMode && (
+        <div className="ip-debug">
+          <div className="ip-debug__title">Debug: status transition history</div>
+          {chartData.map((issue) => {
+            const issueObj = debugIssues.find((i) => i.id === issue.issueId);
+            const activities = debugActivitiesMap.get(issue.issueId) ?? [];
+            const issueCreatedAt = issueObj?.created ?? Date.now();
+            const timeline = parseStateTimeline(activities, issueCreatedAt);
+            const leadTimeStartAt = findLeadTimeStartAt(activities, config?.statusOrder ?? [], issueCreatedAt);
+            const startStatusName = config?.statusOrder?.[0]?.name ?? '(none configured)';
+            return (
+              <div key={issue.issueId} className="ip-debug__issue">
+                <div className="ip-debug__issue-title">
+                  <strong>{issue.idReadable}</strong>
+                  {': '}
+                  {issue.summary}
+                </div>
+                <div className="ip-debug__no-history">
+                  Start status: <code>{startStatusName}</code>
+                  {' | '}
+                  Created: <code>{new Date(issueCreatedAt).toISOString()}</code>
+                  {' | '}
+                  leadTimeStartAt: <code>{new Date(leadTimeStartAt).toISOString()}</code>
+                  {leadTimeStartAt === issueCreatedAt && ' (fell back to creation — start status not found in timeline)'}
+                </div>
+                {timeline.length === 0 ? (
+                  <div className="ip-debug__no-history">No transition data</div>
+                ) : (
+                  <ol className="ip-debug__transitions">
+                    {timeline.map((entry, idx) => (
+                      <li key={idx} className="ip-debug__transition">
+                        <span className="ip-debug__date">
+                          {new Date(entry.timestamp).toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                          })}
+                        </span>
+                        <span className="ip-debug__arrow"> → </span>
+                        <span className="ip-debug__status">{entry.stateName}</span>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}

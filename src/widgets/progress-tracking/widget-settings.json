@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "type": "object",
+  "properties": {
+    "title": { "type": "string" },
+    "projects": { "type": "string" },
+    "primarySearch": { "type": "string" },
+    "additionalSearch": { "type": "string" },
+    "groupByField": { "type": "string" },
+    "statusOrder": { "type": "string" },
+    "showProjectedLT": { "type": "string" },
+    "gridStep": { "type": "integer" },
+    "sortBy": { "type": "string" },
+    "refreshInterval": { "type": "integer" },
+    "debugMode": { "type": "string" },
+    "description": { "type": "string" }
+  }
+}

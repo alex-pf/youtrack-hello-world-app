@@ -69,7 +69,8 @@ export default defineConfig({
         issuesTable: resolve(__dirname, 'src/widgets/issues-table/index.html'),
         issuesProgress: resolve(__dirname, 'src/widgets/issues-progress/index.html'),
         issueStateHistory: resolve(__dirname, 'src/widgets/issue-state-history/index.html'),
-        aiSummary: resolve(__dirname, 'src/widgets/ai-summary/index.html')
+        aiSummary: resolve(__dirname, 'src/widgets/ai-summary/index.html'),
+        progressTracking: resolve(__dirname, 'src/widgets/progress-tracking/index.html')
       }
     }
   }

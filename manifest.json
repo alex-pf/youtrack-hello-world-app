@@ -45,6 +45,16 @@
       "permissions": ["READ_ISSUE"]
     },
     {
+      "key": "progress-tracking-widget",
+      "name": "Progress Tracking",
+      "description": "Gantt-style lead time tracker that splits issues into separate charts by an enum reference field, each with auto-computed p50/p80 percentile background zones",
+      "iconPath": "progress-tracking/widget-icon.svg",
+      "indexPath": "progress-tracking/index.html",
+      "extensionPoint": "DASHBOARD_WIDGET",
+      "settingsSchemaPath": "progress-tracking/widget-settings.json",
+      "permissions": ["READ_ISSUE"]
+    },
+    {
       "key": "ai-summary-widget",
       "name": "AI Summary",
       "description": "Summarizes issues matching a saved filter using the waibee AI service",
