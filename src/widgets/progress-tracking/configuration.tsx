@@ -14,7 +14,7 @@ import QueryAssist from '@jetbrains/ring-ui-built/components/query-assist/query-
 import type {QueryAssistRequestParams} from '@jetbrains/ring-ui-built/components/query-assist/query-assist';
 import Checkbox from '@jetbrains/ring-ui-built/components/checkbox/checkbox';
 import type {EmbeddableWidgetAPI} from '../../../@types/globals';
-import type {WidgetConfig, StatusOrderItem, ProjectInfo, GroupableField, GridStep, SortBy} from './types';
+import type {WidgetConfig, StatusOrderItem, StatusStage, ProjectInfo, GroupableField, GridStep, SortBy} from './types';
 import {serializeConfig} from './types';
 import {loadProjects, loadProjectCustomFields, queryAssistDataSource} from './resources';
 
@@ -53,7 +53,8 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>(config?.projects ?? []);
   const [availableProjects, setAvailableProjects] = useState<ProjectInfo[]>([]);
   const [availableStates, setAvailableStates] = useState<StatusOrderItem[]>([]);
-  const [statusOrder, setStatusOrder] = useState<StatusOrderItem[]>(config?.statusOrder ?? []);
+  const [statusStages, setStatusStages] = useState<StatusStage[]>(config?.statusStages ?? []);
+  const [percentileStageId, setPercentileStageId] = useState<string>(config?.percentileStageId ?? '');
   const [availableGroupableFields, setAvailableGroupableFields] = useState<GroupableField[]>([]);
   const [groupByField, setGroupByField] = useState<string>(config?.groupByField ?? '');
   const [showProjectedLT, setShowProjectedLT] = useState(config?.showProjectedLT ?? false);
@@ -105,8 +106,13 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
       .then(({states, groupableFields}) => {
         setAvailableStates(states);
         setAvailableGroupableFields(groupableFields);
-        // Remove any statusOrder items that are no longer available
-        setStatusOrder(prev => prev.filter(s => states.some(st => st.id === s.id)));
+        // Remove any status items that are no longer available from every stage
+        setStatusStages(prev =>
+          prev.map(stage => ({
+            ...stage,
+            statuses: stage.statuses.filter(s => states.some(st => st.id === s.id)),
+          }))
+        );
         applyDefaultGroupByField(groupableFields);
       })
       .finally(() => setIsLoadingStates(false));
@@ -146,32 +152,84 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
     [host]
   );
 
-  // ── Status sorter helpers ──────────────────────────────────────────────────
+  // ── Stage editor helpers ────────────────────────────────────────────────────
 
-  const toggleStatus = (status: StatusOrderItem) => {
-    setStatusOrder(prev => {
-      const exists = prev.find(s => s.id === status.id);
-      if (exists) return prev.filter(s => s.id !== status.id);
-      return [...prev, status];
-    });
+  const assignedStatusIds = new Set(statusStages.flatMap(s => s.statuses.map(st => st.id)));
+  const unassignedStates = availableStates.filter(s => !assignedStatusIds.has(s.id));
+
+  const genStageId = (): string =>
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `stage-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+  const addStage = () => {
+    setStatusStages(prev => [
+      ...prev,
+      {id: genStageId(), name: `Этап ${prev.length + 1}`, statuses: []},
+    ]);
   };
 
-  const moveStatusUp = (index: number) => {
+  const removeStage = (stageId: string) => {
+    setStatusStages(prev => prev.filter(s => s.id !== stageId));
+  };
+
+  const renameStage = (stageId: string, name: string) => {
+    setStatusStages(prev => prev.map(s => (s.id === stageId ? {...s, name} : s)));
+  };
+
+  const moveStageUp = (index: number) => {
     if (index === 0) return;
-    setStatusOrder(prev => {
+    setStatusStages(prev => {
       const next = [...prev];
       [next[index - 1], next[index]] = [next[index], next[index - 1]];
       return next;
     });
   };
 
-  const moveStatusDown = (index: number) => {
-    setStatusOrder(prev => {
+  const moveStageDown = (index: number) => {
+    setStatusStages(prev => {
       if (index === prev.length - 1) return prev;
       const next = [...prev];
       [next[index], next[index + 1]] = [next[index + 1], next[index]];
       return next;
     });
+  };
+
+  const addStatusToStage = (stageId: string, status: StatusOrderItem) => {
+    setStatusStages(prev =>
+      prev.map(s => (s.id === stageId ? {...s, statuses: [...s.statuses, status]} : s))
+    );
+  };
+
+  const removeStatusFromStage = (stageId: string, statusId: string) => {
+    setStatusStages(prev =>
+      prev.map(s =>
+        s.id === stageId ? {...s, statuses: s.statuses.filter(st => st.id !== statusId)} : s
+      )
+    );
+  };
+
+  const moveStatusUpInStage = (stageId: string, index: number) => {
+    if (index === 0) return;
+    setStatusStages(prev =>
+      prev.map(s => {
+        if (s.id !== stageId) return s;
+        const next = [...s.statuses];
+        [next[index - 1], next[index]] = [next[index], next[index - 1]];
+        return {...s, statuses: next};
+      })
+    );
+  };
+
+  const moveStatusDownInStage = (stageId: string, index: number) => {
+    setStatusStages(prev =>
+      prev.map(s => {
+        if (s.id !== stageId || index === s.statuses.length - 1) return s;
+        const next = [...s.statuses];
+        [next[index], next[index + 1]] = [next[index + 1], next[index]];
+        return {...s, statuses: next};
+      })
+    );
   };
 
   // ── Project Select helpers ─────────────────────────────────────────────────
@@ -206,7 +264,8 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
       primarySearch,
       additionalSearch,
       groupByField,
-      statusOrder,
+      statusStages,
+      percentileStageId,
       showProjectedLT,
       gridStep,
       sortBy,
@@ -307,85 +366,148 @@ const ConfigurationComponent: React.FC<Props> = ({config, host, onSave, onCancel
         </div>
       )}
 
-      {/* ── 5. Status Sorter (only when projects selected) ── */}
+      {/* ── 5. Status Stages (only when projects selected) ── */}
       {selectedProjectIds.length > 0 && (
         <div style={{marginTop: 12, marginBottom: 8}}>
-          <span className="ip-section-label">Status Order</span>
+          <span className="ip-section-label">Этапы (Status Order)</span>
           {isLoadingStates ? (
             <LoaderInline />
           ) : (
             <div className="ip-status-sorter">
-              {/* Checkboxes for available statuses */}
-              <div className="ip-status-sorter__available">
-                {availableStates.map(status => {
-                  const isChecked = statusOrder.some(s => s.id === status.id);
-                  return (
-                    <label
-                      key={status.id}
-                      style={{display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer'}}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        onChange={() => toggleStatus(status)}
+              {statusStages.map((stage, stageIdx) => {
+                const stageUnassignedItems: SelectItem[] = unassignedStates.map(s => ({
+                  key: s.id,
+                  label: s.name,
+                }));
+                return (
+                  <div key={stage.id} className="ip-stage-block">
+                    <div className="ip-status-sorter__item" style={{border: 'none', padding: 0, marginBottom: 8}}>
+                      <Input
+                        size={InputSize.FULL}
+                        value={stage.name}
+                        onChange={e => renameStage(stage.id, e.target.value)}
                       />
-                      {status.color && (
-                        <span
-                          className="ip-status-sorter__color-dot"
-                          style={{backgroundColor: status.color}}
-                        />
-                      )}
-                      <span
-                        style={{
-                          fontSize: 'var(--ring-font-size)',
-                          color: 'var(--ring-text-color)',
-                        }}
-                      >
-                        {status.name}
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-
-              {/* Ordered list with up/down arrows */}
-              {statusOrder.length > 0 && (
-                <div className="ip-status-sorter__ordered">
-                  {statusOrder.map((status, idx) => (
-                    <div key={status.id} className="ip-status-sorter__item">
-                      {status.color && (
-                        <span
-                          className="ip-status-sorter__color-dot"
-                          style={{backgroundColor: status.color}}
-                        />
-                      )}
-                      <span className="ip-status-sorter__item-name">{status.name}</span>
                       <button
                         type="button"
                         className="ip-status-sorter__btn"
-                        onClick={() => moveStatusUp(idx)}
-                        disabled={idx === 0}
-                        title="Move up"
-                        aria-label={`Move ${status.name} up`}
+                        onClick={() => moveStageUp(stageIdx)}
+                        disabled={stageIdx === 0}
+                        title="Move stage up"
+                        aria-label={`Move stage ${stage.name} up`}
                       >
                         ↑
                       </button>
                       <button
                         type="button"
                         className="ip-status-sorter__btn"
-                        onClick={() => moveStatusDown(idx)}
-                        disabled={idx === statusOrder.length - 1}
-                        title="Move down"
-                        aria-label={`Move ${status.name} down`}
+                        onClick={() => moveStageDown(stageIdx)}
+                        disabled={stageIdx === statusStages.length - 1}
+                        title="Move stage down"
+                        aria-label={`Move stage ${stage.name} down`}
                       >
                         ↓
                       </button>
+                      <button
+                        type="button"
+                        className="ip-status-sorter__btn"
+                        onClick={() => removeStage(stage.id)}
+                        title="Remove stage"
+                        aria-label={`Remove stage ${stage.name}`}
+                      >
+                        ✕
+                      </button>
                     </div>
-                  ))}
-                </div>
-              )}
+
+                    {stage.statuses.length > 0 && (
+                      <div className="ip-status-sorter__ordered">
+                        {stage.statuses.map((status, idx) => (
+                          <div key={status.id} className="ip-status-sorter__item">
+                            {status.color && (
+                              <span
+                                className="ip-status-sorter__color-dot"
+                                style={{backgroundColor: status.color}}
+                              />
+                            )}
+                            <span className="ip-status-sorter__item-name">{status.name}</span>
+                            <button
+                              type="button"
+                              className="ip-status-sorter__btn"
+                              onClick={() => moveStatusUpInStage(stage.id, idx)}
+                              disabled={idx === 0}
+                              title="Move up"
+                              aria-label={`Move ${status.name} up`}
+                            >
+                              ↑
+                            </button>
+                            <button
+                              type="button"
+                              className="ip-status-sorter__btn"
+                              onClick={() => moveStatusDownInStage(stage.id, idx)}
+                              disabled={idx === stage.statuses.length - 1}
+                              title="Move down"
+                              aria-label={`Move ${status.name} down`}
+                            >
+                              ↓
+                            </button>
+                            <button
+                              type="button"
+                              className="ip-status-sorter__btn"
+                              onClick={() => removeStatusFromStage(stage.id, status.id)}
+                              title="Remove from stage"
+                              aria-label={`Remove ${status.name} from stage`}
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {unassignedStates.length > 0 && (
+                      <div style={{marginTop: 8}}>
+                        <Select
+                          filter
+                          label="+ Добавить статус в этап"
+                          size={InputSize.FULL}
+                          data={stageUnassignedItems}
+                          selected={null}
+                          onChange={(item: SelectItem | null) => {
+                            if (!item) return;
+                            const status = unassignedStates.find(s => s.id === item.key);
+                            if (status) addStatusToStage(stage.id, status);
+                          }}
+                          notFoundMessage="Нет доступных статусов"
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              <Button onClick={addStage}>+ Добавить этап</Button>
             </div>
           )}
+
+          {/* ── Percentile default stage ── */}
+          <div style={{marginTop: 12, marginBottom: 8}}>
+            <span className="ip-section-label">Перцентили по умолчанию</span>
+            <Select
+              filter
+              label="Выберите этап"
+              size={InputSize.FULL}
+              data={statusStages
+                .filter(s => s.statuses.length > 0)
+                .map(s => ({key: s.id, label: s.name}))}
+              selected={
+                statusStages
+                  .filter(s => s.statuses.length > 0)
+                  .map(s => ({key: s.id, label: s.name}))
+                  .find(o => o.key === percentileStageId) ?? null
+              }
+              onChange={(item: SelectItem | null) => setPercentileStageId(item ? String(item.key) : '')}
+              notFoundMessage="Нет доступных этапов"
+            />
+          </div>
         </div>
       )}
 

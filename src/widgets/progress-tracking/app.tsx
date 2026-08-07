@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import LoaderInline from '@jetbrains/ring-ui-built/components/loader-inline/loader-inline';
+import Select, { type SelectItem } from '@jetbrains/ring-ui-built/components/select/select';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { EmbeddableWidgetAPI } from '../../../@types/globals';
 import Configuration from './configuration';
 import GroupedGanttChart from './grouped-gantt-chart';
-import { WidgetConfig, IssueChartData, IssueActivityItem, Issue, parseStoredConfig } from './types';
+import { WidgetConfig, IssueChartData, IssueActivityItem, Issue, parseStoredConfig, flattenStages } from './types';
 import { loadIssuesWithActivities, loadIssuesCount } from './resources';
 import { buildChartData, groupChartData, parseStateTimeline, findLeadTimeStartAt } from './activity-parser';
 import { fetchGroupPercentiles } from './percentiles';
@@ -43,6 +44,16 @@ export default function App({ host }: Props) {
   // Raw data kept for debug mode rendering
   const [debugIssues, setDebugIssues] = useState<Issue[]>([]);
   const [debugActivitiesMap, setDebugActivitiesMap] = useState<Map<string, IssueActivityItem[]>>(new Map());
+  // Live stage selector (toolbar) — see docs/PROGRESS_TRACKING_SPEC.md section
+  // 11.4. Not persisted to config; init/config-save reset it to
+  // config.percentileStageId, while auto-refresh/manual-refresh leave it as-is.
+  const [selectedStageId, setSelectedStageIdState] = useState<string>('');
+  const selectedStageIdRef = useRef<string>('');
+  const setSelectedStageId = (id: string) => {
+    selectedStageIdRef.current = id;
+    setSelectedStageIdState(id);
+  };
+  const [isRecomputingPercentiles, setIsRecomputingPercentiles] = useState(false);
 
   // ─── Configure event bridge ────────────────────────────────────────────────
   useEffect(() => {
@@ -93,12 +104,14 @@ export default function App({ host }: Props) {
         }
       );
 
+      const flatStatusOrder = flattenStages(cfg.statusStages);
+
       // Build flat chart data (all issues matching the combined filter,
       // including open ones — no resolved filtering here, per spec section 4)
       const flatChartData = buildChartData(
         issues,
         activitiesMap,
-        cfg.statusOrder,
+        flatStatusOrder,
         cfg.showProjectedLT ?? false,
         cfg.groupByField ?? ''
       );
@@ -106,20 +119,34 @@ export default function App({ host }: Props) {
       // Group by groupByField value, sorted within each group by sortBy
       const groupedData = groupChartData(flatChartData, cfg.sortBy);
 
-      if (!silent) {
-        setLoadingMessage('Calculating percentiles...');
-      }
+      // Active stage for percentile background zones — the live toolbar
+      // selection if the user has changed it, otherwise the configured
+      // default (percentileStageId). See section 11.4.
+      const activeStageId = selectedStageIdRef.current || cfg.percentileStageId;
+      const activeStage = cfg.statusStages.find(s => s.id === activeStageId) ?? null;
 
-      // Per-group lead-time percentiles (resolved-only sample) for the
-      // background zones
-      const percentiles = await fetchGroupPercentiles(host, {
-        primarySearch: cfg.primarySearch,
-        additionalSearch: cfg.additionalSearch ?? '',
-        groupByField: cfg.groupByField ?? '',
-        statusOrder: cfg.statusOrder,
-        groupValues: Array.from(groupedData.keys()),
-        alreadyLoaded: { issues, activitiesMap },
-      });
+      let percentiles: Map<string, { p50: number; p80: number } | null>;
+      if (activeStage === null) {
+        // No stage configured/selected (or the selected id no longer exists
+        // in cfg.statusStages) — no background zones for any group.
+        percentiles = new Map();
+      } else {
+        if (!silent) {
+          setLoadingMessage('Calculating percentiles...');
+        }
+
+        // Per-group lead-time percentiles (resolved-only sample) for the
+        // background zones
+        percentiles = await fetchGroupPercentiles(host, {
+          primarySearch: cfg.primarySearch,
+          additionalSearch: cfg.additionalSearch ?? '',
+          groupByField: cfg.groupByField ?? '',
+          flatStatusOrder,
+          stage: activeStage,
+          groupValues: Array.from(groupedData.keys()),
+          alreadyLoaded: { issues, activitiesMap },
+        });
+      }
 
       setChartData(flatChartData);
       setGroups(groupedData);
@@ -157,6 +184,7 @@ export default function App({ host }: Props) {
         const parsedConfig = stored ? parseStoredConfig(stored) : null;
         setConfig(parsedConfig);
         configRef.current = parsedConfig;
+        setSelectedStageId(parsedConfig?.percentileStageId ?? '');
 
         if (!stored?.primarySearch) {
           // No config yet — enter configuration mode
@@ -205,6 +233,7 @@ export default function App({ host }: Props) {
   const handleConfigSave = async (newConfig: WidgetConfig) => {
     setConfig(newConfig);
     configRef.current = newConfig;
+    setSelectedStageId(newConfig.percentileStageId ?? '');
     setIsConfiguring(false);
     setIsLoading(true);
     await fetchData(newConfig, false);
@@ -217,6 +246,42 @@ export default function App({ host }: Props) {
     } else {
       setIsConfiguring(false);
       host.exitConfigMode();
+    }
+  };
+
+  // ─── Live stage switcher (toolbar) ─────────────────────────────────────────
+  // Recomputes percentiles for a newly selected stage by reusing already
+  // loaded issues/activities/groups — no network fetch of issues, per
+  // docs/PROGRESS_TRACKING_SPEC.md section 11.4. Not persisted to config.
+  const handleStageChange = async (stageId: string) => {
+    setSelectedStageId(stageId);
+    if (!config) return;
+    const stage = config.statusStages.find(s => s.id === stageId) ?? null;
+    if (!stage) {
+      setPercentilesByGroup(new Map());
+      return;
+    }
+    if (debugIssues.length === 0) {
+      // Data not loaded yet — fetchData will pick up the selection via the ref.
+      return;
+    }
+    setIsRecomputingPercentiles(true);
+    try {
+      const flatStatusOrder = flattenStages(config.statusStages);
+      const percentiles = await fetchGroupPercentiles(host, {
+        primarySearch: config.primarySearch,
+        additionalSearch: config.additionalSearch ?? '',
+        groupByField: config.groupByField ?? '',
+        flatStatusOrder,
+        stage,
+        groupValues: Array.from(groups.keys()),
+        alreadyLoaded: { issues: debugIssues, activitiesMap: debugActivitiesMap },
+      });
+      setPercentilesByGroup(percentiles);
+    } catch (e) {
+      console.warn('[progress-tracking] Failed to recompute percentiles for stage', stageId, e);
+    } finally {
+      setIsRecomputingPercentiles(false);
     }
   };
 
@@ -307,6 +372,31 @@ export default function App({ host }: Props) {
             <span>Refreshing...</span>
           </div>
         )}
+        {isRecomputingPercentiles && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            fontSize: 'var(--ring-font-size-smaller)',
+            color: 'var(--ring-secondary-color)',
+          }}>
+            <LoaderInline />
+          </div>
+        )}
+        {(() => {
+          const stageItems: SelectItem[] = (config?.statusStages ?? [])
+            .filter(s => s.statuses.length > 0)
+            .map(s => ({ key: s.id, label: s.name }));
+          if (stageItems.length === 0) return null;
+          return (
+            <Select
+              data={stageItems}
+              selected={stageItems.find(i => i.key === selectedStageId) ?? null}
+              label="Перцентили до этапа"
+              onChange={(item: SelectItem | null) => item && handleStageChange(String(item.key))}
+            />
+          );
+        })()}
         <button
           onClick={() => config && fetchData(config, true)}
           disabled={isRefreshing}
@@ -330,7 +420,7 @@ export default function App({ host }: Props) {
         <GroupedGanttChart
           groups={groups}
           percentilesByGroup={percentilesByGroup}
-          statusOrder={config?.statusOrder ?? []}
+          statusOrder={flattenStages(config?.statusStages ?? [])}
           showProjectedLT={config?.showProjectedLT ?? false}
           gridStep={config?.gridStep ?? 1}
           baseUrl={baseUrl}
@@ -350,14 +440,16 @@ export default function App({ host }: Props) {
       {config?.debugMode && (
         <div className="ip-debug">
           <div className="ip-debug__title">Debug: status transition history</div>
-          {chartData.map((issue) => {
-            const issueObj = debugIssues.find((i) => i.id === issue.issueId);
-            const activities = debugActivitiesMap.get(issue.issueId) ?? [];
-            const issueCreatedAt = issueObj?.created ?? Date.now();
-            const timeline = parseStateTimeline(activities, issueCreatedAt);
-            const leadTimeStartAt = findLeadTimeStartAt(activities, config?.statusOrder ?? [], issueCreatedAt);
-            const startStatusName = config?.statusOrder?.[0]?.name ?? '(none configured)';
-            return (
+          {(() => {
+            const debugFlatStatusOrder = flattenStages(config?.statusStages ?? []);
+            return chartData.map((issue) => {
+              const issueObj = debugIssues.find((i) => i.id === issue.issueId);
+              const activities = debugActivitiesMap.get(issue.issueId) ?? [];
+              const issueCreatedAt = issueObj?.created ?? Date.now();
+              const timeline = parseStateTimeline(activities, issueCreatedAt);
+              const leadTimeStartAt = findLeadTimeStartAt(activities, debugFlatStatusOrder, issueCreatedAt);
+              const startStatusName = debugFlatStatusOrder[0]?.name ?? '(none configured)';
+              return (
               <div key={issue.issueId} className="ip-debug__issue">
                 <div className="ip-debug__issue-title">
                   <strong>{issue.idReadable}</strong>
@@ -392,8 +484,9 @@ export default function App({ host }: Props) {
                   </ol>
                 )}
               </div>
-            );
-          })}
+              );
+            });
+          })()}
         </div>
       )}
     </div>

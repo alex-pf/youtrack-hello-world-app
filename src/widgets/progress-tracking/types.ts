@@ -5,6 +5,15 @@ export interface StatusOrderItem {
   color?: string;
 }
 
+// A named group ("stage") of statuses, in display order. Stages are
+// themselves ordered (statusStages: StatusStage[]), and each stage carries
+// an ordered list of statuses — see docs/PROGRESS_TRACKING_SPEC.md section 10.
+export interface StatusStage {
+  id: string;                    // client-generated id, stable across reorders (not a YouTrack id)
+  name: string;                  // user-assigned stage name
+  statuses: StatusOrderItem[];   // ordered list of statuses within this stage
+}
+
 // Grid step controlling the X-axis tick/gridline spacing on the Gantt chart.
 // Unlike issue-state-history's GridStep (calendar 'day'|'week'|'month'), here
 // the X axis is measured in lead-time days, so the step is a number of days
@@ -26,7 +35,8 @@ export interface WidgetConfig {
   primarySearch: string;         // required — defines chart composition + percentile base
   additionalSearch: string;      // optional — narrows chart composition only
   groupByField: string;          // technical/localized name of the enum field to group by
-  statusOrder: StatusOrderItem[]; // ordered list of statuses to display
+  statusStages: StatusStage[];   // ordered list of stages (each an ordered list of statuses)
+  percentileStageId: string;     // id of the stage (from statusStages) up to which percentiles are computed; '' if unset
   showProjectedLT: boolean;
   gridStep: GridStep;            // days between grid ticks, shared across all group charts
   sortBy: SortBy;
@@ -42,7 +52,8 @@ export interface StoredWidgetConfig {
   primarySearch: string;
   additionalSearch?: string;
   groupByField?: string;
-  statusOrder?: string;         // JSON-encoded StatusOrderItem[]
+  statusStages?: string;        // JSON-encoded StatusStage[]
+  percentileStageId?: string;   // id of the stage up to which percentiles are computed; '' if unset
   showProjectedLT?: string;     // 'true' | 'false'
   gridStep?: number;
   sortBy?: string;
@@ -68,7 +79,8 @@ export function parseStoredConfig(stored: Record<string, string>): WidgetConfig 
     primarySearch: stored.primarySearch ?? '',
     additionalSearch: stored.additionalSearch ?? '',
     groupByField: stored.groupByField ?? '',
-    statusOrder: stored.statusOrder ? JSON.parse(stored.statusOrder) : [],
+    statusStages: stored.statusStages ? JSON.parse(stored.statusStages) : [],
+    percentileStageId: stored.percentileStageId ?? '',
     showProjectedLT: stored.showProjectedLT !== 'false',
     gridStep: parseGridStep(stored.gridStep ? Number(stored.gridStep) : undefined),
     sortBy: parseSortBy(stored.sortBy),
@@ -85,7 +97,8 @@ export function serializeConfig(config: WidgetConfig): StoredWidgetConfig {
     primarySearch: config.primarySearch,
     additionalSearch: config.additionalSearch ?? '',
     groupByField: config.groupByField ?? '',
-    statusOrder: JSON.stringify(config.statusOrder),
+    statusStages: JSON.stringify(config.statusStages),
+    percentileStageId: config.percentileStageId ?? '',
     showProjectedLT: String(config.showProjectedLT),
     gridStep: config.gridStep,
     sortBy: config.sortBy,
@@ -93,6 +106,15 @@ export function serializeConfig(config: WidgetConfig): StoredWidgetConfig {
     debugMode: String(config.debugMode),
     description: config.description ?? '',
   };
+}
+
+// Flattens an ordered list of stages into a single ordered list of statuses
+// — the concatenation of each stage's statuses, in stage order then
+// within-stage order. This is what used to be the single flat `statusOrder`
+// list, and is used everywhere a flat list is needed (segments,
+// leadTimeStartAt, legend, etc.) — see flattenStages call sites.
+export function flattenStages(stages: StatusStage[]): StatusOrderItem[] {
+  return stages.flatMap(s => s.statuses);
 }
 
 // ─── YouTrack API response types ───────────────────────────────────────────

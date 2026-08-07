@@ -1,7 +1,7 @@
 import type { EmbeddableWidgetAPI } from '../../../@types/globals';
-import type { Issue, IssueActivityItem, StatusOrderItem } from './types';
+import type { Issue, IssueActivityItem, StatusOrderItem, StatusStage } from './types';
 import { extractGroupFieldValue, loadIssuesWithActivities } from './resources';
-import { findLeadTimeStartAt } from './activity-parser';
+import { findLeadTimeStartAt, findStageExitAt } from './activity-parser';
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
@@ -57,27 +57,39 @@ export function computeGroupPercentiles(
 // ─── Lead time for a single resolved issue ─────────────────────────────────
 
 /**
- * Lead time in days for a resolved issue, computed directly from Issue +
- * activities + statusOrder (independent of activity-parser's
- * buildChartData/IssueChartData) — see the caller-facing note in
- * docs/PROGRESS_TRACKING_SPEC.md section 5: the percentile sample can include
- * issues outside the already-rendered IssueChartData[] dataset (when
- * additionalSearch narrows the chart but not the percentile base), so this
- * must not depend on totalDays from an already-built chart dataset.
+ * Lead time in days for a resolved issue up to the point it exited the
+ * given stage, computed directly from Issue + activities + flatStatusOrder
+ * + stage (independent of activity-parser's buildChartData/IssueChartData)
+ * — see the caller-facing note in docs/PROGRESS_TRACKING_SPEC.md section 5:
+ * the percentile sample can include issues outside the already-rendered
+ * IssueChartData[] dataset (when additionalSearch narrows the chart but not
+ * the percentile base), so this must not depend on totalDays from an
+ * already-built chart dataset.
  *
- * Returns null when the issue isn't resolved, or (defensively) when the
- * computed lead time is negative or NaN.
+ * Per section 10.3, the LT window now runs from leadTimeStartAt (still
+ * anchored on flatStatusOrder[0], i.e. the flattened stage list) to the
+ * moment the issue exited `stage` (findStageExitAt), NOT to issue.resolved
+ * directly — the base sample (resolved issues) is unchanged, only the LT
+ * formula's end point moves.
+ *
+ * Returns null when the issue isn't resolved, when it never reached `stage`
+ * (findStageExitAt returns null), or (defensively) when the computed lead
+ * time is negative or NaN.
  */
-export function leadTimeDaysForResolvedIssue(
+export function stageLeadTimeDaysForResolvedIssue(
   issue: Issue,
   activities: IssueActivityItem[],
-  statusOrder: StatusOrderItem[]
+  flatStatusOrder: StatusOrderItem[],
+  stage: StatusStage
 ): number | null {
   if (issue.resolved === null) return null;
 
   const issueCreatedAt = issue.created ?? issue.resolved;
-  const leadTimeStartAt = findLeadTimeStartAt(activities, statusOrder, issueCreatedAt);
-  const days = (issue.resolved - leadTimeStartAt) / MS_PER_DAY;
+  const leadTimeStartAt = findLeadTimeStartAt(activities, flatStatusOrder, issueCreatedAt);
+  const exitAt = findStageExitAt(activities, stage, issueCreatedAt, issue.resolved);
+  if (exitAt === null) return null;
+
+  const days = (exitAt - leadTimeStartAt) / MS_PER_DAY;
 
   if (Number.isNaN(days) || days < 0) return null;
   return days;
@@ -114,7 +126,8 @@ export function buildGroupQuery(
 function collectLeadTimesByGroup(
   issues: Issue[],
   activitiesMap: Map<string, IssueActivityItem[]>,
-  statusOrder: StatusOrderItem[],
+  flatStatusOrder: StatusOrderItem[],
+  stage: StatusStage,
   groupByField: string,
   groupValues: string[]
 ): Map<string, number[]> {
@@ -127,7 +140,7 @@ function collectLeadTimesByGroup(
     const key = extractGroupFieldValue(issue, groupByField) ?? '';
     if (!byGroup.has(key)) continue; // not one of the requested groups
     const activities = activitiesMap.get(issue.id) ?? [];
-    const days = leadTimeDaysForResolvedIssue(issue, activities, statusOrder);
+    const days = stageLeadTimeDaysForResolvedIssue(issue, activities, flatStatusOrder, stage);
     if (days === null) continue;
     byGroup.get(key)!.push(days);
   }
@@ -155,19 +168,21 @@ export async function fetchGroupPercentiles(
     primarySearch: string;
     additionalSearch: string;
     groupByField: string;
-    statusOrder: StatusOrderItem[];
+    flatStatusOrder: StatusOrderItem[];
+    stage: StatusStage;
     groupValues: string[];
     alreadyLoaded: { issues: Issue[]; activitiesMap: Map<string, IssueActivityItem[]> };
   }
 ): Promise<Map<string, { p50: number; p80: number } | null>> {
-  const { primarySearch, additionalSearch, groupByField, statusOrder, groupValues, alreadyLoaded } =
+  const { primarySearch, additionalSearch, groupByField, flatStatusOrder, stage, groupValues, alreadyLoaded } =
     params;
 
   if (additionalSearch.trim() === '') {
     const byGroup = collectLeadTimesByGroup(
       alreadyLoaded.issues,
       alreadyLoaded.activitiesMap,
-      statusOrder,
+      flatStatusOrder,
+      stage,
       groupByField,
       groupValues
     );
@@ -191,7 +206,7 @@ export async function fetchGroupPercentiles(
           if (key !== groupValue) continue;
         }
         const activities = activitiesMap.get(issue.id) ?? [];
-        const d = leadTimeDaysForResolvedIssue(issue, activities, statusOrder);
+        const d = stageLeadTimeDaysForResolvedIssue(issue, activities, flatStatusOrder, stage);
         if (d !== null) days.push(d);
       }
       return [groupValue, days] as const;

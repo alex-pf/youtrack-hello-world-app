@@ -42,7 +42,8 @@ Defined in `types.ts` as `WidgetConfig` (in-memory) and `StoredWidgetConfig` (pe
 | `primarySearch` | `string` | `''` | YouTrack search query. Functionally required — the Save button in `configuration.tsx` is disabled while `primarySearch.trim()` is empty, and `app.tsx` treats an unset `primarySearch` as "no config yet" and forces config mode. Determines chart composition (combined with `additionalSearch`) AND is the base query for percentile computation (combined with `groupByField: value`). |
 | `additionalSearch` | `string` | `''` | Optional second filter. Narrows chart composition only (`(primarySearch) and (additionalSearch)`) — does NOT narrow the percentile sample, so background zones keep reflecting the "normal" distribution even when the visible chart is filtered down. |
 | `groupByField` | `string` | `''` (auto-picked in the UI) | Technical name of the enum custom field issues are grouped by. `configuration.tsx` auto-selects a field named/localized `"Type"` if present, else the first available groupable field — but only for a brand-new widget with no previously saved `groupByField`. |
-| `statusOrder` | `StatusOrderItem[]` | `[]` | Same as Issues Progress — defines the start status (`statusOrder[0]`, used as the lead-time "day 0" anchor) and the stacking order/color of segments. Shared across all group charts. |
+| `statusStages` | `StatusStage[]` | `[]` | Ordered list of **stages**, each `{ id, name, statuses: StatusOrderItem[] }` — an ordered grouping of statuses into named workflow phases (e.g. "Analysis" → `[Analysis, Ready for In Progress]`). Replaces the old flat `statusOrder`. Concatenating every stage's statuses in order via `flattenStages(statusStages)` reproduces the equivalent flat list used everywhere the old `statusOrder` was consumed — chart segments, the legend, `leadTimeStartAt` (still the entry into `flattenStages(statusStages)[0]`), and the debug panel. See "Stages and the Percentile Boundary" below. |
+| `percentileStageId` | `string` | `''` | Id (from `statusStages`) of the stage used as the **default** percentile boundary — i.e. which stage's exit point defines "lead time" for the background zones when the widget first loads or reloads. Can be overridden live via a Select in the widget's toolbar without touching Configuration or this stored value — see below. |
 | `showProjectedLT` | `boolean` | `true` (per `parseStoredConfig`'s `!== 'false'` check) / `false` in a brand-new `configuration.tsx` form | Shows a green marker at the current Estimated Date field's projected lead-time position. Same algorithm as Issues Progress. |
 | `gridStep` | `GridStep` (`1 \| 7 \| 14 \| 28`) | `1` | Days between X-axis grid ticks/gridlines — **shared across every group chart** so charts stay visually comparable even though each has its own X domain. |
 | `sortBy` | `'startDate' \| 'issueNumber' \| 'estimatedDate'` | `'startDate'` | Row order **within each group's chart** (not global). |
@@ -50,7 +51,7 @@ Defined in `types.ts` as `WidgetConfig` (in-memory) and `StoredWidgetConfig` (pe
 | `debugMode` | `boolean` | `false` | Shows a raw status-transition-history panel below the charts, one block per issue across the full (ungrouped) `chartData` list. |
 | `description` | `string` | `''` | Markdown text rendered (via `marked` + `DOMPurify`) below the charts. |
 
-Removed relative to Issues Progress: `search` (split into `primarySearch` + `additionalSearch`), `ltEnabled`, `ltSettings`, `showEstimateDate` (and its tick-mark history rendering).
+Removed relative to Issues Progress: `search` (split into `primarySearch` + `additionalSearch`), `ltEnabled`, `ltSettings`, `showEstimateDate` (and its tick-mark history rendering). Removed relative to the first version of this widget's own schema: the flat `statusOrder: StatusOrderItem[]` — replaced by `statusStages` + `percentileStageId` (breaking change, see "Stages and the Percentile Boundary" below).
 
 ### Serialization
 
@@ -124,14 +125,26 @@ Unchanged from Issues Progress: issues are loaded in packs of `ISSUES_PACK_SIZE 
 
 Per spec, the percentile sample for group `G` is: all issues matching `primarySearch AND groupByField = G AND resolved != null` — **not** narrowed by `additionalSearch`, and computed independently from what's actually drawn on group `G`'s chart (which DOES include open issues and IS narrowed by `additionalSearch`).
 
-### Lead time per issue (`leadTimeDaysForResolvedIssue`)
+### Lead time per issue, up to a stage (`stageLeadTimeDaysForResolvedIssue`)
+
+Lead time is no longer always "time to `resolved`" — it's parameterized by the **selected stage** `S` (from `statusStages`), so the percentile zones can reflect LT up to any intermediate point in the workflow, not just full resolution:
 
 ```
-leadTimeDays = (issue.resolved - leadTimeStartAt) / MS_PER_DAY
+leadTimeDays = (exitAt(issue, S) - leadTimeStartAt) / MS_PER_DAY
 ```
-where `leadTimeStartAt = findLeadTimeStartAt(activities, statusOrder, issue.created)` — the exact same "day 0" anchor used for the chart's own segments and the Projected LT marker, so the percentile sample and the chart agree on what "lead time" means. Returns `null` (excluded from the sample) when the issue isn't resolved, or defensively when the computed value is `NaN` or negative.
 
-This is computed directly from `Issue` + `IssueActivityItem[]` + `statusOrder`, independently of any already-built `IssueChartData` — deliberately, because the percentile sample can include issues that aren't part of the rendered dataset at all (when `additionalSearch` narrows the chart but not the percentile base).
+- `leadTimeStartAt = findLeadTimeStartAt(activities, flattenStages(statusStages), issue.created)` — unchanged: entry into the first status of the first stage, same anchor used for the chart's own segments and the Projected LT marker.
+- `exitAt(issue, S)` = `findStageExitAt(activities, S, issue.created, issue.resolved)` (in `activity-parser.ts`) — the moment of the issue's **last** exit from any status in `S.statuses`, computed as follows:
+  1. Build the chronological status timeline (`parseStateTimeline`) and trim it to entries strictly before `cutoff` (`issue.resolved`, or `Date.now()` for an open issue).
+  2. Scan the trimmed timeline for the LAST entry whose status matches (id-or-name) one of `S.statuses` — not the first. If the issue left and re-entered the stage multiple times, only the final departure counts.
+  3. If no entry matches at all, the issue never reached stage `S` before the cutoff → `exitAt` is `null`.
+  4. If the last match is also the last entry in the trimmed timeline (nothing followed it before cutoff), the issue was still inside the stage right up to `cutoff` → `exitAt = cutoff`.
+  5. Otherwise `exitAt` is the timestamp of the entry immediately following the last match — the moment it actually transitioned out.
+  6. A stage with zero statuses (`S.statuses.length === 0`) always returns `null` — there is nothing to "exit".
+- Issues that never reached stage `S` (`exitAt === null`) are **excluded** from the percentile sample entirely — the spec explicitly rejects falling back to `resolved`, since that would artificially deflate LT for issues that simply never got that far.
+- Returns `null` (excluded from the sample) when the issue isn't resolved, when `exitAt` is `null`, or defensively when the computed value is `NaN` or negative.
+
+This is computed directly from `Issue` + `IssueActivityItem[]` + `statusStages`, independently of any already-built `IssueChartData` — deliberately, because the percentile sample can include issues that aren't part of the rendered dataset at all (when `additionalSearch` narrows the chart but not the percentile base).
 
 ### Percentile formula (`computePercentile`)
 
@@ -147,8 +160,31 @@ value = days[lower] + (days[upper] - days[lower]) * (index - lower)
 
 ### Data source: reuse vs. extra fetch
 
+`fetchGroupPercentiles` takes the active `stage: StatusStage` as a parameter (alongside `flatStatusOrder`) and threads it into `stageLeadTimeDaysForResolvedIssue` for every issue considered — same reuse-vs-fetch split as before, just parameterized by stage now:
+
 - **`additionalSearch` empty**: the resolved-issue population needed for percentiles is *exactly* the resolved subset of the data already fetched for `primarySearch` (since `additionalSearch` isn't in the equation and doesn't narrow anything). `fetchGroupPercentiles` reuses `alreadyLoaded.issues`/`alreadyLoaded.activitiesMap` (the same load `app.tsx` already did for the chart) via `collectLeadTimesByGroup` — **zero extra REST calls**.
 - **`additionalSearch` non-empty**: the percentile population is now wider than what's rendered, so a separate `loadIssuesWithActivities` call per distinct group value is issued in parallel (`Promise.all`), using `buildGroupQuery(primarySearch, groupByField, groupValue)` → `(${primarySearch}) and (${groupByField}: {${groupValue}})`. Curly braces are YouTrack query syntax for values containing spaces. Results are re-filtered client-side by `extractGroupFieldValue` as a defensive check against imperfect query narrowing (skipped for the `''`/no-value group — see Known Limitations).
+
+---
+
+## Stages and the Percentile Boundary
+
+`statusStages: StatusStage[]` (`types.ts`) replaces the original flat `statusOrder: StatusOrderItem[]`. Each stage is `{ id, name, statuses: StatusOrderItem[] }` — a named, ordered group of statuses (e.g. `ToDo: [ToDo]`, `Analysis: [Analysis, Ready for In Progress]`, `In Progress: [In Progress, Review, Ready For Test]`, `Test: [Test]`, `Done: []`). Stages themselves are ordered, and a stage may legitimately have zero statuses (a marker/placeholder stage).
+
+`flattenStages(stages)` (in `types.ts`) concatenates every stage's `statuses` in stage order, then within-stage order, and is the single adaptation point for every algorithm that used to consume the flat `statusOrder` directly: chart segments (`parseStateSegments`), `leadTimeStartAt` (`findLeadTimeStartAt`), the shared legend, and the debug panel. None of those algorithms changed — they still take a flat `StatusOrderItem[]`, it's just produced by `flattenStages(config.statusStages)` now instead of being read straight off the config.
+
+### The live stage switcher (toolbar)
+
+Besides driving chart segments, `statusStages` also feeds the percentile background-zone boundary: instead of always measuring lead time to `resolved`, the widget measures it to the **exit point of a selected stage** (see "Lead time per issue, up to a stage" above). Which stage is active is controlled by a `Select` in the widget's toolbar (`app.tsx`), populated only with **non-empty** stages (`statusStages.filter(s => s.statuses.length > 0)`) — an empty stage can't be "exited" and is never offered as a choice.
+
+How the active stage is determined, in the four situations from spec section 10.4:
+
+- **Widget init (first load / dashboard reload)**: the toolbar selection is seeded from the saved `config.percentileStageId`, and `fetchData`'s first percentile computation uses that same value.
+- **Config save**: `handleConfigSave` resets the toolbar selection to the newly saved `newConfig.percentileStageId`, so a changed default takes effect immediately, overriding whatever was picked live before opening Configuration.
+- **Manual/auto refresh**: `fetchData` re-reads whatever the toolbar is currently set to (`selectedStageIdRef.current`, falling back to `cfg.percentileStageId` only if the ref is empty) — a live selection survives both manual "Обновить" clicks and interval auto-refresh.
+- **Live toggle (toolbar Select `onChange`)**: `handleStageChange` updates the selection immediately and, if data has already been loaded once, recomputes percentiles in place by calling `fetchGroupPercentiles` with the newly selected stage — **no config write**, no re-fetch of `/issues`, and no re-entry into Configuration.
+
+The toggle is explicitly ephemeral: `percentileStageId` in the stored config is only ever the *default a fresh load starts from*; a live change in the toolbar is never persisted, so the next full dashboard reload reverts to the saved default (per spec section 10.4, "рекомендованный вариант — и то, и другое").
 
 ---
 
@@ -223,7 +259,8 @@ Sections in order:
 3. **Основной фильтр** (Primary filter) — `QueryAssist` with live autocomplete via `POST /search/assist`.
 4. **Дополнительный фильтр** (Additional filter, optional) — second `QueryAssist`, shares the same `queryAssistHandler`.
 5. **Группировать по** (Group by) — `Select`, only shown once ≥1 project is selected. Populated from `availableGroupableFields`. On first load for a brand-new widget (no `groupByField` in the config the form was opened with — tracked via `hadInitialGroupByField` ref), auto-picks a field named/localized `"Type"` if present, else the first available field (`applyDefaultGroupByField`); this auto-pick never overrides a value the user already has saved or has changed in this session. Shows a warning message instead of the select if the selected projects have no groupable enum fields at all.
-6. **Status Order** — checkbox list of available statuses plus an ordered list with ↑/↓ reorder arrows; only visible when ≥1 project selected. Changing selected projects prunes any `statusOrder` entries no longer present in the new project set.
+6. **Этапы (Status Order)** — multi-stage editor, only visible when ≥1 project selected. Each stage renders as a block with: a text input for the stage name, its ordered list of assigned statuses (each with ↑/↓ reorder within the stage and a remove button that returns the status to the "available" pool), and ↑/↓/remove controls for the stage itself (removing a stage returns all its statuses to the pool). A `Select` per stage lets you add any not-yet-assigned status into it. "+ Добавить этап" appends a new empty stage named `Этап N`. Changing selected projects prunes any status no longer present in the new project set from whichever stage it was in.
+   Directly below the stage list, a **"Перцентили по умолчанию"** `Select` sets `percentileStageId`, populated only with non-empty stages (`statusStages.filter(s => s.statuses.length > 0)`) — this is the stage the widget's live toolbar switcher (and the initial percentile computation) starts from on load/reload.
 7. **Show Projected Lead Time** — checkbox.
 8. **Debug (Отладка)** — checkbox.
 9. **Шаг сетки** (Grid step) — `Select` with options 1 день / Неделя (7 дней) / 2 недели (14 дней) / 4 недели (28 дней).
@@ -259,3 +296,9 @@ The **Save** button is disabled while `primarySearch.trim()` is empty — this i
 10. **No timezone handling (inherited)** — all date arithmetic is in UTC milliseconds; `toLocaleDateString()` uses the browser locale, so near-midnight events can appear shifted by a day for non-UTC users.
 
 11. **`showProjectedLT` default mismatch between a brand-new form and a re-parsed stored config** — `configuration.tsx`'s initial React state defaults to `false` (`config?.showProjectedLT ?? false`) for a widget with no config yet, but `parseStoredConfig` defaults an *existing but pre-this-field* stored config to `true` (`stored.showProjectedLT !== 'false'`). This mirrors an existing Issues Progress quirk and is intentional, but the two "defaults" disagree depending on which code path you're looking at.
+
+12. **An empty stage is never a valid percentile boundary and never participates in matching** — `findStageExitAt` returns `null` immediately when `stage.statuses.length === 0` (nothing to "exit" from), so an empty stage can never contribute lead-time data even if it were selectable. The Configuration UI's "Перцентили по умолчанию" select and the toolbar's live switcher both proactively filter empty stages out of their options (`statusStages.filter(s => s.statuses.length > 0)`) rather than relying on this fallback, but the fallback exists too — selecting/loading with a stray empty-stage id (e.g. from a hand-edited config) degrades to "no background zones for any group," not an error.
+
+13. **Schema breaking change — old flat `statusOrder` does not migrate** — `statusStages`/`percentileStageId` fully replaced the earlier flat `statusOrder: StatusOrderItem[]`/absence-of-stages schema, with no migration code. A dashboard config saved before this change parses to `statusStages: []` / `percentileStageId: ''` (via `parseStoredConfig`'s `stored.statusStages ? JSON.parse(...) : []` fallback) — segments render with an empty configured order (everything falls into the "unconfigured"/gray bucket) and no percentile zones are shown, until the user re-opens Configuration, rebuilds the stage list, and saves. This is a deliberate, confirmed decision (the widget was not yet in production use).
+
+14. **Live stage toggle before the first full data load is a no-op beyond updating the selection** — `handleStageChange` recomputes percentiles by reusing `debugIssues`/`debugActivitiesMap` (the same issues+activities already fetched for the chart), not by re-querying `/issues`. If those arrays are still empty (`debugIssues.length === 0` — i.e. the user interacts with the toolbar Select before any successful `fetchData` has completed), the handler only updates `selectedStageId`/its ref and returns; the freshly-selected stage takes effect once the in-flight or next `fetchData` call runs and reads that ref.

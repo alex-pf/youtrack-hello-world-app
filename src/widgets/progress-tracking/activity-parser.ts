@@ -6,6 +6,7 @@ import {
   StatusSegment,
   EstimateDateChange,
   StatusOrderItem,
+  StatusStage,
   SortBy,
 } from './types';
 import { extractGroupFieldValue, extractCurrentState } from './resources';
@@ -61,7 +62,7 @@ function isNumberValue(v: unknown): v is number {
  * consistent — segments should start exactly at the same point that anchors
  * the Estimated Date / Projected Lead Time markers.
  */
-function matchesStatus(
+export function matchesStatus(
   stateName: string,
   stateId: string,
   target: { id: string; name: string }
@@ -333,6 +334,63 @@ export function findLeadTimeStartAt(
   // logic so the Gantt timeline and this "day 0" anchor never disagree.
   const entry = timeline.find((e) => matchesStatus(e.stateName, e.stateId, startStatus));
   return entry?.timestamp ?? issueCreatedAt;
+}
+
+/**
+ * Finds the timestamp at which an issue EXITED a given stage — the moment
+ * it last left the set of statuses belonging to `stage` — used as the
+ * percentile-window end anchor (see docs/PROGRESS_TRACKING_SPEC.md section
+ * 10.3).
+ *
+ * Algorithm:
+ * 1. An empty stage (no statuses configured) can never be "exited" → null.
+ * 2. Build the raw chronological timeline via parseStateTimeline(); no
+ *    timeline data at all → null.
+ * 3. Trim the timeline to entries strictly before `cutoff` (issueResolvedAt,
+ *    or Date.now() for still-open issues — same cutoff semantics as
+ *    parseStateSegments' nowOrResolved).
+ * 4. Find the LAST (latest, since the timeline is chronological) entry that
+ *    matches one of the stage's statuses (matchesStatus, id-or-name). If the
+ *    issue never passed through any status in the stage → null (the issue
+ *    never reached this stage; excluded from the percentile sample by the
+ *    caller in percentiles.ts, but findStageExitAt itself just reports null
+ *    with no fallback logic).
+ * 5. If that entry is the last one in the trimmed timeline (nothing follows
+ *    it before cutoff), the issue was still within the stage up to cutoff →
+ *    return cutoff.
+ * 6. Otherwise return the timestamp of the NEXT entry after it — the moment
+ *    the issue transitioned out of the stage.
+ *
+ * @param activities - Raw activity items
+ * @param stage - The stage whose exit point is being located
+ * @param issueCreatedAt - Issue creation timestamp (timeline anchor)
+ * @param issueResolvedAt - Issue resolution timestamp, or null for open issues (cutoff falls back to Date.now())
+ */
+export function findStageExitAt(
+  activities: IssueActivityItem[],
+  stage: StatusStage,
+  issueCreatedAt: number,
+  issueResolvedAt: number | null
+): number | null {
+  if (stage.statuses.length === 0) return null;
+
+  const timeline = parseStateTimeline(activities, issueCreatedAt);
+  if (timeline.length === 0) return null;
+
+  const cutoff = issueResolvedAt ?? Date.now();
+  const trimmed = timeline.filter((e) => e.timestamp < cutoff);
+  if (trimmed.length === 0) return null;
+
+  let lastMatchIndex = -1;
+  for (let i = 0; i < trimmed.length; i++) {
+    const entry = trimmed[i];
+    const inStage = stage.statuses.some((s) => matchesStatus(entry.stateName, entry.stateId, s));
+    if (inStage) lastMatchIndex = i;
+  }
+
+  if (lastMatchIndex === -1) return null;
+  if (lastMatchIndex === trimmed.length - 1) return cutoff;
+  return trimmed[lastMatchIndex + 1].timestamp;
 }
 
 // ─── Estimate Date History Parser ─────────────────────────────────────────────
