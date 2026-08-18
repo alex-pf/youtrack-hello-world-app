@@ -54,6 +54,18 @@ export default function App({ host }: Props) {
     setSelectedStageIdState(id);
   };
   const [isRecomputingPercentiles, setIsRecomputingPercentiles] = useState(false);
+  // Per-stage percentile cache, populated eagerly: the selected stage is
+  // computed inline during fetchData, all other non-empty stages are
+  // computed afterwards in the background (see precomputeOtherStages), so
+  // switching stages in the toolbar is instant once the background pass
+  // catches up instead of re-fetching on every click.
+  const [percentileCache, setPercentileCache] = useState<Map<string, Map<string, { p50: number; p80: number } | null>>>(new Map());
+  const percentileCacheRef = useRef<Map<string, Map<string, { p50: number; p80: number } | null>>>(new Map());
+  // Bumped on every fetchData call; the background precompute loop checks
+  // this before writing each stage's result so a stale background pass from
+  // a superseded fetch (config change, auto-refresh) discards its results
+  // instead of overwriting fresher data.
+  const dataGenerationRef = useRef(0);
 
   // ─── Configure event bridge ────────────────────────────────────────────────
   useEffect(() => {
@@ -65,8 +77,58 @@ export default function App({ host }: Props) {
     return () => window.removeEventListener('yt-widget-configure', handleConfigure);
   }, [host]);
 
+  // ─── Background percentile precompute ──────────────────────────────────────
+  // Runs after fetchData resolves the selected stage's percentiles. Walks
+  // every other non-empty stage sequentially (one REST round-trip set at a
+  // time, not all at once — see percentiles.ts for why a single stage's
+  // fetch can already be expensive when additionalSearch is set) and caches
+  // each result as it lands, so a later toolbar switch is instant instead of
+  // repeating the fetch on click.
+  const precomputeOtherStages = useCallback(async (
+    cfg: WidgetConfig,
+    flatStatusOrder: ReturnType<typeof flattenStages>,
+    groupedData: Map<string, IssueChartData[]>,
+    issues: Issue[],
+    activitiesMap: Map<string, IssueActivityItem[]>,
+    activeStageId: string,
+    generation: number
+  ) => {
+    const otherStages = cfg.statusStages.filter(s => s.statuses.length > 0 && s.id !== activeStageId);
+    for (const stage of otherStages) {
+      // A newer fetchData call (config change, refresh) superseded this
+      // pass — stop rather than racing it and writing stale results.
+      if (dataGenerationRef.current !== generation) return;
+      try {
+        const result = await fetchGroupPercentiles(host, {
+          primarySearch: cfg.primarySearch,
+          additionalSearch: cfg.additionalSearch ?? '',
+          groupByField: cfg.groupByField ?? '',
+          flatStatusOrder,
+          stage,
+          groupValues: Array.from(groupedData.keys()),
+          alreadyLoaded: { issues, activitiesMap },
+        });
+        if (dataGenerationRef.current !== generation) return;
+        percentileCacheRef.current.set(stage.id, result);
+        setPercentileCache(new Map(percentileCacheRef.current));
+        // The user switched to exactly this stage while we were computing
+        // it in the background — reflect it right away instead of making
+        // them wait for another click.
+        if (selectedStageIdRef.current === stage.id) {
+          setPercentilesByGroup(result);
+        }
+      } catch (e) {
+        console.warn('[progress-tracking] Background percentile precompute failed for stage', stage.id, e);
+      }
+    }
+  }, [host]);
+
   // ─── Data fetching ─────────────────────────────────────────────────────────
   const fetchData = useCallback(async (cfg: WidgetConfig, silent: boolean) => {
+    const generation = ++dataGenerationRef.current;
+    percentileCacheRef.current = new Map();
+    setPercentileCache(new Map());
+
     if (!silent) {
       setIsLoading(true);
       setError(null);
@@ -146,6 +208,8 @@ export default function App({ host }: Props) {
           groupValues: Array.from(groupedData.keys()),
           alreadyLoaded: { issues, activitiesMap },
         });
+        percentileCacheRef.current.set(activeStage.id, percentiles);
+        setPercentileCache(new Map(percentileCacheRef.current));
       }
 
       setChartData(flatChartData);
@@ -155,6 +219,13 @@ export default function App({ host }: Props) {
       setDebugIssues(issues);
       setDebugActivitiesMap(activitiesMap);
       setError(null);
+
+      // Selected stage is shown immediately (above); every other non-empty
+      // stage is precomputed in the background so switching later is
+      // instant. Not awaited — must not block isLoading from clearing.
+      if (activeStage !== null) {
+        void precomputeOtherStages(cfg, flatStatusOrder, groupedData, issues, activitiesMap, activeStage.id, generation);
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setError(msg);
@@ -163,7 +234,7 @@ export default function App({ host }: Props) {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [host]);
+  }, [host, precomputeOtherStages]);
 
   // ─── Initialization ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -250,15 +321,24 @@ export default function App({ host }: Props) {
   };
 
   // ─── Live stage switcher (toolbar) ─────────────────────────────────────────
-  // Recomputes percentiles for a newly selected stage by reusing already
-  // loaded issues/activities/groups — no network fetch of issues, per
-  // docs/PROGRESS_TRACKING_SPEC.md section 11.4. Not persisted to config.
+  // Reads from the per-stage cache populated by fetchData/precomputeOtherStages
+  // whenever possible — instant, no network. Only falls back to an on-demand
+  // fetch (reusing already-loaded issues/activities, no re-fetch of issues)
+  // when the background precompute for that stage hasn't landed yet — e.g.
+  // the user clicks through several stages faster than the background pass
+  // can keep up, or additionalSearch makes each stage's fetch slow. Not
+  // persisted to config — see docs/PROGRESS_TRACKING_SPEC.md section 11.4.
   const handleStageChange = async (stageId: string) => {
     setSelectedStageId(stageId);
     if (!config) return;
     const stage = config.statusStages.find(s => s.id === stageId) ?? null;
     if (!stage) {
       setPercentilesByGroup(new Map());
+      return;
+    }
+    const cached = percentileCacheRef.current.get(stageId);
+    if (cached) {
+      setPercentilesByGroup(cached);
       return;
     }
     if (debugIssues.length === 0) {
@@ -278,6 +358,8 @@ export default function App({ host }: Props) {
         alreadyLoaded: { issues: debugIssues, activitiesMap: debugActivitiesMap },
       });
       setPercentilesByGroup(percentiles);
+      percentileCacheRef.current.set(stageId, percentiles);
+      setPercentileCache(new Map(percentileCacheRef.current));
     } catch (e) {
       console.warn('[progress-tracking] Failed to recompute percentiles for stage', stageId, e);
     } finally {
