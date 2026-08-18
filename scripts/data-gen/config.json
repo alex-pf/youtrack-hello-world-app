@@ -1,0 +1,27 @@
+{
+  "youtrack": {
+    "projectId": "0-0"
+  },
+  "synthetic": {
+    "summaryPrefix": "[synthetic]",
+    "tag": "synthetic-data"
+  },
+  "target": {
+    "newIssuesPerWeek": 8,
+    "groupByField": "Type",
+    "leadTime": {
+      "Bug": {"p50Days": 3, "p80Days": 8, "spread": "medium"},
+      "Feature": {"p50Days": 10, "p80Days": 25, "spread": "wide"},
+      "Task": {"p50Days": 2, "p80Days": 5, "spread": "narrow"}
+    }
+  },
+  "schedule": {
+    "timezone": "Europe/Moscow",
+    "workingDaysOnly": true,
+    "workingHours": {"startHour": 9, "endHour": 19},
+    "actionsPerDayRange": [3, 4]
+  },
+  "ai": {
+    "model": "claude-haiku-4-5"
+  }
+}

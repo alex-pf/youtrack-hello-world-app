@@ -7,9 +7,13 @@
     "dev": "vite",
     "build": "tsc -p tsconfig.app.json && vite build && youtrack-app validate dist",
     "pack": "rm -rf hello-world-app.zip && cd dist && zip -r ../hello-world-app.zip .",
-    "upload": "youtrack-app upload dist"
+    "upload": "youtrack-app upload dist",
+    "data-gen:plan": "node --env-file=scripts/data-gen/.env.local scripts/data-gen/plan.mjs",
+    "data-gen:run": "node --env-file=scripts/data-gen/.env.local scripts/data-gen/run.mjs",
+    "data-gen:run:dry": "node --env-file=scripts/data-gen/.env.local scripts/data-gen/run.mjs --dry-run"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.70.0",
     "@jetbrains/ring-ui-built": "^7.0.79",
     "@types/d3": "^7.4.3",
     "@types/dompurify": "^3.0.5",
@@ -18,7 +22,8 @@
     "dompurify": "^3.4.11",
     "marked": "^18.0.5",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "zod": "^3.25.0"
   },
   "devDependencies": {
     "@jetbrains/youtrack-apps-tools": "^0.0.2",
