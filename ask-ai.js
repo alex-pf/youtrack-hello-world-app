@@ -44,6 +44,21 @@ function makeRequestId() {
   return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
 }
 
+function formatLinksForPrompt(issue) {
+  return (issue.links || [])
+    .filter(function (l) { return l.trimmedIssues && l.trimmedIssues.length; })
+    .map(function (l) {
+      const label = l.direction === 'INWARD'
+        ? l.linkType.targetToSource
+        : l.linkType.sourceToTarget;
+      const refs = l.trimmedIssues
+        .map(function (i) { return i.idReadable + ' ' + i.summary; })
+        .join('; ');
+      return label + ': ' + refs;
+    })
+    .join('\n');
+}
+
 function formatIssuesForPrompt(issues, history) {
   history = history || {};
   return issues.map(function (issue) {
@@ -59,10 +74,12 @@ function formatIssuesForPrompt(issues, history) {
       })
       .filter(Boolean)
       .join(', ');
+    const links = formatLinksForPrompt(issue);
     const historyText = history[issue.idReadable];
     return '### ' + issue.idReadable + ' ' + issue.summary +
       (fields ? '\n' + fields : '') +
       (issue.description ? '\n' + issue.description : '') +
+      (links ? '\nСвязанные задачи:\n' + links : '') +
       (historyText ? '\nИстория:\n' + historyText : '');
   }).join('\n\n');
 }

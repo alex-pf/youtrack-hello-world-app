@@ -52,12 +52,26 @@ export interface IssueField {
   projectCustomField?: {field: {name: string; localizedName?: string}};
 }
 
+export interface IssueLinkType {
+  name: string;
+  localizedName?: string;
+  sourceToTarget: string;
+  targetToSource: string;
+}
+
+export interface IssueLink {
+  direction: 'INWARD' | 'OUTWARD' | 'BOTH';
+  linkType: IssueLinkType;
+  trimmedIssues: {idReadable: string; summary: string}[];
+}
+
 export interface Issue {
   id: string;
   idReadable: string;
   summary: string;
   description: string | null;
   fields: IssueField[];
+  links: IssueLink[];
 }
 
 /** Response from POST ask-ai/ask — the AI call runs async, this just hands back a poll handle. */

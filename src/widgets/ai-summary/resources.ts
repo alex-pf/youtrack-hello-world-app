@@ -11,7 +11,10 @@ import type {
 
 const ISSUE_FIELD_VALUE_FIELDS = 'name,login,fullName,presentation';
 const ISSUE_FIELD_FIELDS = `value(${ISSUE_FIELD_VALUE_FIELDS}),projectCustomField(field(name,localizedName))`;
-const ISSUE_FIELDS = `id,idReadable,summary,description,fields(${ISSUE_FIELD_FIELDS})`;
+// trimmedIssues (rather than issues) caps the number of linked issues YouTrack
+// returns per link type, so a heavily-linked issue can't blow up the response.
+const ISSUE_LINK_FIELDS = 'direction,linkType(name,localizedName,sourceToTarget,targetToSource),trimmedIssues(idReadable,summary)';
+const ISSUE_FIELDS = `id,idReadable,summary,description,fields(${ISSUE_FIELD_FIELDS}),links(${ISSUE_LINK_FIELDS})`;
 
 const ISSUES_LIMIT = 50;
 
@@ -54,7 +57,9 @@ function pollAskAiResult(
 }
 
 const POLL_INTERVAL_MS = 2500;
-const POLL_TIMEOUT_MS = 4 * 60 * 1000;
+// waibee's own stated thinking-time budget is 10 minutes; give it a couple
+// extra minutes of slack for network/queueing before giving up client-side.
+const POLL_TIMEOUT_MS = 12 * 60 * 1000;
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
