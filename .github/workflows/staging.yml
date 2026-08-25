@@ -43,7 +43,7 @@ jobs:
         with:
           node-version: '20'
 
-      - run: npm install -g @jetbrains/youtrack-apps-tools
+      - run: npm install -g @jetbrains/youtrack-apps-tools@1.0.3
 
       - name: Validate YouTrack connectivity
         env:
@@ -73,4 +73,4 @@ jobs:
         run: |
           # Normalize YOUTRACK_HOST: strip trailing slash
           export YOUTRACK_HOST=$(echo "$YOUTRACK_HOST" | sed 's|/$||')
-          youtrack-app upload dist
+          youtrack-app app upload --directory dist
